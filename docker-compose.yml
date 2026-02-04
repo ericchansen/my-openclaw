@@ -1,7 +1,7 @@
 services:
   openclaw-gateway:
     build:
-      context: .
+      context: ${OPENCLAW_SRC_DIR}
       dockerfile: Dockerfile
     image: ${OPENCLAW_IMAGE:-openclaw:local}
     environment:
@@ -11,14 +11,14 @@ services:
     volumes:
       - ${OPENCLAW_CONFIG_DIR}:/home/node/.openclaw
       - ${OPENCLAW_WORKSPACE_DIR}:/home/node/.openclaw/workspace
-      - ${OPENCLAW_SRC_DIR}:/home/node/.openclaw/workspace/openclaw
+      - ${OPENCLAW_SRC_DIR}:/home/node/repos/openclaw
     ports:
       - "${OPENCLAW_GATEWAY_PORT:-18789}:18789"
       - "${OPENCLAW_BRIDGE_PORT:-18790}:18790"
     init: true
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "node", "dist/index.js", "health", "--token", "${OPENCLAW_GATEWAY_TOKEN}"]
+      test: ["CMD", "node", "dist/index.js", "health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -35,7 +35,7 @@ services:
       ]
   openclaw-cli:
     build:
-      context: .
+      context: ${OPENCLAW_SRC_DIR}
       dockerfile: Dockerfile
     image: ${OPENCLAW_IMAGE:-openclaw:local}
     environment:
@@ -45,6 +45,7 @@ services:
     volumes:
       - ${OPENCLAW_CONFIG_DIR}:/home/node/.openclaw
       - ${OPENCLAW_WORKSPACE_DIR}:/home/node/.openclaw/workspace
+      - ${OPENCLAW_SRC_DIR}:/home/node/repos/openclaw
     stdin_open: true
     tty: true
     init: true
