@@ -1,6 +1,6 @@
 # My OpenClaw Setup
 
-Personal OpenClaw configuration — Docker (local) and Azure VM (cloud) deployments.
+Personal OpenClaw configuration — Azure VM deployment with Key Vault, Tailscale, and systemd.
 
 ## Azure VM Deployment (Recommended)
 
@@ -96,32 +96,6 @@ Azure Resource Group (rg-openclaw)
 └── Public IP (static, DNS label)
 ```
 
-## Docker Setup (Local)
-
-For running OpenClaw locally in Docker Compose.
-
-### Quick Start
-
-```powershell
-# 1. Copy template config
-Copy-Item openclaw.template.json F:\openclaw\config\openclaw.json
-
-# 2. Start the gateway
-docker compose up -d openclaw-gateway
-
-# 3. Open dashboard
-# http://localhost:18789/?token=<your-token>
-```
-
-### Common Commands
-
-```powershell
-docker compose run --rm openclaw-cli           # Interactive CLI
-docker compose logs -f openclaw-gateway        # View logs
-docker compose restart openclaw-gateway        # Restart
-docker compose down                            # Stop
-```
-
 ## Directory Structure
 
 ```
@@ -133,8 +107,5 @@ my-openclaw/
 │   ├── main.bicep          # VM + Key Vault + VNet + NSG
 │   ├── main.bicepparam     # Parameters file
 │   └── cloud-init.yaml     # VM bootstrap (Node, Tailscale, Azure CLI, OpenClaw)
-├── docker-compose.yml      # Local Docker setup
-├── openclaw.template.json  # Baseline config template
-├── .env.example            # Docker env template
-└── .env                    # Docker env (gitignored)
+└── openclaw.template.json  # Baseline config template
 ```
