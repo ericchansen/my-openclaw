@@ -18,3 +18,24 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
+
+# =============================================================================
+# OpenClaw Runtime & Personal Files
+# =============================================================================
+
+# Workspace personal files (contain private info)
+workspace/MEMORY.md
+workspace/memory/
+workspace/TODO.md
+workspace/USER.md
+workspace/IDENTITY.md
+workspace/SOUL.md
+workspace/HEARTBEAT.md
+
+# Config secrets (actual config with real tokens)
+config/openclaw.json
+
+# Runtime state
+*.log
+*.pid
+.openclaw-state/

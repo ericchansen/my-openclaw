@@ -44,7 +44,7 @@ runcmd:
     cat > /etc/systemd/system/openclaw-gateway.service << 'EOF'
     [Unit]
     Description=OpenClaw Gateway
-    After=network-online.target tailscaled.service
+    After=network-online.target
     Wants=network-online.target
 
     [Service]
@@ -52,9 +52,11 @@ runcmd:
     User=azureuser
     Environment=HOME=/home/azureuser
     Environment=NODE_ENV=production
+    Environment=PATH=/usr/local/bin:/usr/bin:/bin
     ExecStart=/usr/bin/openclaw gateway --bind loopback --port 18789
     Restart=always
     RestartSec=5
+    TimeoutStopSec=30
 
     [Install]
     WantedBy=multi-user.target
