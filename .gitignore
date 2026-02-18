@@ -3,6 +3,12 @@
 .env.local
 .env.*.local
 
+# Azure Developer CLI
+.azure/
+
+# Bicep build artifacts
+infra/main.json
+
 # OS files
 .DS_Store
 Thumbs.db

@@ -1,0 +1,68 @@
+#cloud-config
+package_update: true
+package_upgrade: true
+
+packages:
+  - curl
+  - git
+  - build-essential
+
+runcmd:
+  # Install Node.js 22 LTS via NodeSource
+  - curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+  - apt-get install -y nodejs
+
+  # Install Tailscale
+  - curl -fsSL https://tailscale.com/install.sh | sh
+
+  # Install Azure CLI (for Key Vault secret retrieval)
+  - curl -sL https://aka.ms/InstallAzureCLIDeb | bash
+
+  # Install OpenClaw and Copilot CLI globally
+  - npm install -g openclaw@latest
+  - npm install -g @github/copilot@prerelease
+
+  # Create a script to fetch secrets from Key Vault via managed identity
+  - |
+    cat > /usr/local/bin/openclaw-fetch-secrets << 'SCRIPT'
+    #!/bin/bash
+    # Fetch secrets from Azure Key Vault using VM managed identity.
+    # Usage: source openclaw-fetch-secrets <vault-name>
+    VAULT_NAME="${1:-}"
+    if [ -z "$VAULT_NAME" ]; then
+      echo "Usage: openclaw-fetch-secrets <vault-name>" >&2
+      exit 1
+    fi
+    az login --identity --allow-no-subscriptions >/dev/null 2>&1
+    export OPENCLAW_GATEWAY_TOKEN="$(az keyvault secret show --vault-name "$VAULT_NAME" --name OPENCLAW-GATEWAY-TOKEN --query value -o tsv 2>/dev/null)"
+    export GITHUB_TOKEN="$(az keyvault secret show --vault-name "$VAULT_NAME" --name GITHUB-TOKEN --query value -o tsv 2>/dev/null)"
+    SCRIPT
+  - chmod +x /usr/local/bin/openclaw-fetch-secrets
+
+  # Create systemd service for OpenClaw gateway (loopback-only for security)
+  - |
+    cat > /etc/systemd/system/openclaw-gateway.service << 'EOF'
+    [Unit]
+    Description=OpenClaw Gateway
+    After=network-online.target tailscaled.service
+    Wants=network-online.target
+
+    [Service]
+    Type=simple
+    User=azureuser
+    Environment=HOME=/home/azureuser
+    Environment=NODE_ENV=production
+    ExecStart=/usr/bin/openclaw gateway --bind loopback --port 18789
+    Restart=always
+    RestartSec=5
+
+    [Install]
+    WantedBy=multi-user.target
+    EOF
+
+  - systemctl daemon-reload
+  - systemctl enable openclaw-gateway.service
+
+  - echo "OpenClaw installation complete."
+  - echo "Next: run 'sudo tailscale up' to join your tailnet, then 'openclaw onboard'."
+  - echo "To load Key Vault secrets: source openclaw-fetch-secrets <vault-name>"
