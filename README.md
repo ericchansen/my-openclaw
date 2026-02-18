@@ -1,10 +1,104 @@
 # My OpenClaw Setup
 
-Personal OpenClaw configuration — Azure VM deployment with Key Vault, Tailscale, and systemd.
+Personal OpenClaw configuration and operational patterns — Azure VM deployment with Key Vault, Tailscale, and systemd.
 
-## Azure VM Deployment (Recommended)
+## What's Here
 
-Deploys a VM with Key Vault for secret management, Tailscale for secure access, and systemd for the gateway service.
+This repo contains:
+- **Azure VM deployment** — Bicep templates for VM + Key Vault + Tailscale
+- **Workspace templates** — Agent configuration files ready to customize
+- **Operational docs** — Patterns for agent orchestration, cron, and more
+
+## Directory Structure
+
+```
+my-openclaw/
+├── config/
+│   ├── openclaw.template.json    # Full config template (copy + customize)
+│   └── openclaw-gateway.service  # Production systemd service
+├── workspace/
+│   ├── AGENTS.md                 # Agent instructions (use as-is)
+│   ├── SOUL.template.md          # Agent personality (customize)
+│   ├── USER.template.md          # Your info (customize)
+│   ├── IDENTITY.template.md      # Agent identity (customize)
+│   ├── HEARTBEAT.template.md     # Periodic checks (customize)
+│   ├── TOOLS.template.md         # Local tool notes (customize)
+│   └── skills/
+│       └── copilot-cli/          # Copilot CLI orchestration skill
+├── docs/
+│   ├── orchestrator-pattern.md   # Subagent delegation patterns
+│   ├── agent-hierarchy.md        # Main/orchestrator/subagent roles
+│   ├── cron-patterns.md          # Scheduled task patterns
+│   ├── keyvault-integration.md   # Azure Key Vault usage
+│   └── todo-conventions.md       # Task tracking guidelines
+├── infra/
+│   ├── main.bicep                # Azure resources (VM, Key Vault, VNet)
+│   ├── main.bicepparam           # Deployment parameters
+│   └── cloud-init.yaml           # VM bootstrap (Node, Tailscale, OpenClaw)
+├── azure.yaml                    # azd project manifest
+├── deploy.ps1                    # Azure deployment script
+└── migrate.ps1                   # Docker → VM migration
+```
+
+## Fork & Customize
+
+This repo is meant to be forked and personalized. Here's how:
+
+### 1. Fork the Repository
+
+```bash
+# Fork on GitHub, then clone your fork
+git clone https://github.com/YOUR_USERNAME/my-openclaw.git
+cd my-openclaw
+```
+
+### 2. Create Your Config
+
+```bash
+# Copy the template
+cp config/openclaw.template.json ~/.openclaw/openclaw.json
+
+# Edit with your values:
+# - Bot tokens (Telegram, Discord)
+# - Gateway token
+# - User IDs for allowlists
+# - Agent identity
+```
+
+### 3. Set Up Your Workspace
+
+```bash
+mkdir -p ~/.openclaw/workspace
+
+# Copy AGENTS.md as-is (it's ready to use)
+cp workspace/AGENTS.md ~/.openclaw/workspace/
+
+# Copy and customize the templates
+cp workspace/SOUL.template.md ~/.openclaw/workspace/SOUL.md
+cp workspace/USER.template.md ~/.openclaw/workspace/USER.md
+cp workspace/IDENTITY.template.md ~/.openclaw/workspace/IDENTITY.md
+cp workspace/HEARTBEAT.template.md ~/.openclaw/workspace/HEARTBEAT.md
+cp workspace/TOOLS.template.md ~/.openclaw/workspace/TOOLS.md
+
+# Copy skills
+cp -r workspace/skills ~/.openclaw/workspace/
+```
+
+### 4. Edit Your Files
+
+- **SOUL.md** — Agent personality and values
+- **USER.md** — Your name, timezone, preferences
+- **IDENTITY.md** — Agent name, emoji, accounts
+- **TOOLS.md** — Local infrastructure notes
+
+### 5. Store Secrets Securely
+
+Never commit secrets. Use:
+- **Azure Key Vault** (for VM deployments)
+- **Environment variables** (for local setups)
+- **`.env` files** (gitignored)
+
+## Azure VM Deployment
 
 ### Prerequisites
 
@@ -17,47 +111,34 @@ Deploys a VM with Key Vault for secret management, Tailscale for secure access, 
 azd up
 ```
 
-### Deploy with scripts
+### Deploy with Script
 
 ```powershell
-# Basic deploy
 .\deploy.ps1 -SshPublicKeyPath "~\.ssh\id_ed25519.pub"
-
-# Deploy and seed Key Vault secrets
-.\deploy.ps1 -SshPublicKeyPath "~\.ssh\id_ed25519.pub" -GatewayToken "mytoken" -GitHubToken "ghp_xxx"
 ```
 
-### Post-deployment
+### Post-Deployment
 
 ```bash
-# 1. SSH in (port forwards the gateway automatically)
+# SSH in (port forwards gateway)
 ssh openclaw
 
-# 2. Wait for cloud-init
+# Wait for cloud-init
 cloud-init status --wait
 
-# 3. Join Tailscale
+# Join Tailscale
 sudo tailscale up
 
-# 4. Load secrets from Key Vault
+# Load secrets from Key Vault
 source openclaw-fetch-secrets <vault-name>
 
-# 5. Run onboarding or start gateway
-openclaw onboard
+# Start gateway
 sudo systemctl start openclaw-gateway
 ```
 
-### Migrate from Docker
+### SSH Config
 
-```powershell
-.\migrate.ps1 -VmHost "azureuser@<VM_FQDN>"
-```
-
-Copies config + workspace from `F:\openclaw\` to the VM and fixes Docker-specific paths.
-
-### SSH config
-
-Add to `~/.ssh/config` for easy access:
+Add to `~/.ssh/config`:
 
 ```
 Host openclaw
@@ -67,45 +148,45 @@ Host openclaw
     LocalForward 18789 127.0.0.1:18789
 ```
 
-Then `ssh openclaw` gives you a shell + gateway at `http://127.0.0.1:18789`.
+## Key Vault Secrets
 
-### Key Vault
+Store these in Azure Key Vault:
 
-Secrets are stored in Azure Key Vault and fetched via managed identity:
+| Secret | Purpose |
+|--------|---------|
+| `OPENCLAW-GATEWAY-TOKEN` | Gateway auth |
+| `GITHUB-TOKEN` | Repo access |
+| `TELEGRAM-BOT-TOKEN` | Telegram bot |
+| `DISCORD-BOT-TOKEN` | Discord bot |
 
-- `OPENCLAW-GATEWAY-TOKEN` — gateway auth token
-- `GITHUB-TOKEN` — GitHub PAT for repo access
-
-Add/update secrets:
 ```bash
-az keyvault secret set --vault-name <vault-name> --name OPENCLAW-GATEWAY-TOKEN --value "mytoken"
-az keyvault secret set --vault-name <vault-name> --name GITHUB-TOKEN --value "ghp_xxx"
+az keyvault secret set --vault-name <vault> --name GITHUB-TOKEN --value "ghp_xxx"
 ```
 
-### Architecture
+## Documentation
+
+See the `docs/` folder for operational patterns:
+
+- **[Orchestrator Pattern](docs/orchestrator-pattern.md)** — Delegate tasks to subagents
+- **[Agent Hierarchy](docs/agent-hierarchy.md)** — Main, orchestrator, and subagent roles
+- **[Cron Patterns](docs/cron-patterns.md)** — Scheduled automation
+- **[Key Vault Integration](docs/keyvault-integration.md)** — Secure secret management
+- **[TODO Conventions](docs/todo-conventions.md)** — Task tracking best practices
+
+## Architecture
 
 ```
-Azure Resource Group (rg-openclaw)
-├── VM (Standard_B2pls_v2, Ubuntu 24.04 ARM64)
+Azure Resource Group
+├── VM (Ubuntu 24.04 ARM64)
 │   ├── System-assigned managed identity
-│   ├── OpenClaw gateway (systemd, loopback-only)
+│   ├── OpenClaw gateway (systemd, loopback)
 │   ├── Tailscale (mesh VPN)
-│   └── Copilot CLI (prerelease)
-├── Key Vault (RBAC, secrets for gateway + GitHub)
-├── VNet + NSG (SSH only, no public gateway ports)
-└── Public IP (static, DNS label)
+│   └── Copilot CLI
+├── Key Vault (RBAC, secrets)
+├── VNet + NSG (SSH only)
+└── Public IP (static, DNS)
 ```
 
-## Directory Structure
+## License
 
-```
-my-openclaw/
-├── azure.yaml              # azd project manifest
-├── deploy.ps1              # Azure VM deployment script
-├── migrate.ps1             # Docker → VM data migration
-├── infra/
-│   ├── main.bicep          # VM + Key Vault + VNet + NSG
-│   ├── main.bicepparam     # Parameters file
-│   └── cloud-init.yaml     # VM bootstrap (Node, Tailscale, Azure CLI, OpenClaw)
-└── openclaw.template.json  # Baseline config template
-```
+Personal configuration repository. Fork and customize for your own use.

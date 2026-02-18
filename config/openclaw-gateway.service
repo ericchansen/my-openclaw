@@ -1,0 +1,25 @@
+# OpenClaw Gateway systemd service
+# Copy to /etc/systemd/system/openclaw-gateway.service
+# Then: systemctl daemon-reload && systemctl enable --now openclaw-gateway
+
+[Unit]
+Description=OpenClaw Gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=azureuser
+Environment=HOME=/home/azureuser
+Environment=NODE_ENV=production
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+
+# Bind to loopback only — use Tailscale serve for external access
+ExecStart=/usr/bin/openclaw gateway --bind loopback --port 18789
+
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

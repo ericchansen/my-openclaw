@@ -1,0 +1,150 @@
+{
+  "browser": {
+    "headless": true,
+    "noSandbox": true
+  },
+  "auth": {
+    "profiles": {
+      "github-copilot:github": {
+        "provider": "github-copilot",
+        "mode": "token"
+      }
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "github-copilot/claude-opus-4.5"
+      },
+      "models": {
+        "github-copilot/claude-opus-4.5": {},
+        "github-copilot/claude-opus-4.6": {}
+      },
+      "workspace": "/home/azureuser/.openclaw/workspace",
+      "verboseDefault": "on",
+      "maxConcurrent": 4,
+      "subagents": {
+        "maxConcurrent": 8
+      }
+    },
+    "list": [
+      {
+        "id": "main",
+        "default": true,
+        "identity": {
+          "name": "YOUR_AGENT_NAME",
+          "emoji": "🤖"
+        }
+      },
+      {
+        "id": "orchestrator",
+        "workspace": "/home/azureuser/.openclaw/workspace",
+        "model": "github-copilot/claude-sonnet-4",
+        "identity": {
+          "name": "Orchestrator",
+          "emoji": "🎯"
+        }
+      }
+    ]
+  },
+  "tools": {
+    "profile": "coding",
+    "alsoAllow": [
+      "group:web",
+      "message"
+    ],
+    "web": {
+      "search": {
+        "enabled": true,
+        "provider": "brave",
+        "apiKey": "YOUR_BRAVE_API_KEY"
+      }
+    },
+    "sessions": {
+      "visibility": "agent"
+    }
+  },
+  "messages": {
+    "ackReactionScope": "group-mentions",
+    "suppressToolErrors": false
+  },
+  "commands": {
+    "native": "auto",
+    "nativeSkills": "auto"
+  },
+  "session": {
+    "dmScope": "per-channel-peer",
+    "identityLinks": {
+      "YOUR_USERNAME": [
+        "telegram:YOUR_TELEGRAM_USER_ID",
+        "discord:YOUR_DISCORD_USER_ID"
+      ]
+    }
+  },
+  "channels": {
+    "telegram": {
+      "dmPolicy": "allowlist",
+      "botToken": "YOUR_TELEGRAM_BOT_TOKEN",
+      "allowFrom": [
+        "YOUR_TELEGRAM_USER_ID"
+      ],
+      "groupPolicy": "disabled",
+      "streamMode": "partial"
+    },
+    "discord": {
+      "enabled": true,
+      "token": "YOUR_DISCORD_BOT_TOKEN",
+      "groupPolicy": "allowlist",
+      "dmPolicy": "allowlist",
+      "allowFrom": [
+        "YOUR_DISCORD_USER_ID"
+      ],
+      "dm": {
+        "enabled": true
+      },
+      "guilds": {
+        "YOUR_GUILD_ID": {
+          "requireMention": true,
+          "toolsBySender": {
+            "YOUR_DISCORD_USER_ID": {
+              "allow": ["*"]
+            },
+            "*": {
+              "deny": ["exec", "write", "edit", "gateway", "cron"]
+            }
+          },
+          "users": ["*"],
+          "channels": {
+            "YOUR_AGENT_CHANNEL_ID": {
+              "requireMention": false
+            },
+            "*": {
+              "allow": true
+            }
+          }
+        }
+      }
+    }
+  },
+  "gateway": {
+    "mode": "local",
+    "auth": {
+      "mode": "token",
+      "token": "YOUR_GATEWAY_TOKEN",
+      "allowTailscale": true
+    },
+    "tailscale": {
+      "mode": "serve"
+    }
+  },
+  "plugins": {
+    "entries": {
+      "discord": {
+        "enabled": true
+      },
+      "telegram": {
+        "enabled": true
+      }
+    }
+  }
+}
