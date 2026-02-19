@@ -32,9 +32,12 @@ runcmd:
     VAULT_NAME="${1:-}"
     if [ -z "$VAULT_NAME" ]; then
       echo "Usage: openclaw-fetch-secrets <vault-name>" >&2
-      exit 1
+      return 1
     fi
-    az login --identity --allow-no-subscriptions >/dev/null 2>&1
+    if ! az login --identity --allow-no-subscriptions >/dev/null 2>&1; then
+      echo "ERROR: Managed identity login failed. Is the VM identity enabled?" >&2
+      return 1
+    fi
     for SECRET_NAME in $(az keyvault secret list --vault-name "$VAULT_NAME" --query "[].name" -o tsv 2>/dev/null); do
       ENV_VAR=$(echo "$SECRET_NAME" | tr '[:lower:]-' '[:upper:]_')
       VALUE="$(az keyvault secret show --vault-name "$VAULT_NAME" --name "$SECRET_NAME" --query value -o tsv 2>/dev/null)"
@@ -47,6 +50,7 @@ runcmd:
   - chmod +x /usr/local/bin/openclaw-fetch-secrets
 
   # Create systemd service for OpenClaw gateway (loopback-only for security)
+  # NOTE: Canonical copy lives at config/openclaw-gateway.service — keep in sync.
   - |
     cat > /etc/systemd/system/openclaw-gateway.service << 'EOF'
     [Unit]

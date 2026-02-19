@@ -1,6 +1,7 @@
 # OpenClaw Gateway systemd service
 # Copy to /etc/systemd/system/openclaw-gateway.service
 # Then: systemctl daemon-reload && systemctl enable --now openclaw-gateway
+# NOTE: A copy of this service is also defined in infra/cloud-init.yaml for automated provisioning.
 
 [Unit]
 Description=OpenClaw Gateway
