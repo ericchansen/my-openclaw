@@ -181,6 +181,7 @@ Switch mid-session with `/model`:
 
 | Model | Best For |
 |-------|----------|
+| Claude Opus 4.6 | Complex architecture, difficult debugging |
 | Claude Opus 4.5 | Complex architecture, difficult debugging (default) |
 | Claude Sonnet 4.5 | Day-to-day coding, routine tasks (faster, cheaper) |
 | GPT-5.2 Codex | Code generation, reviewing other models' output |

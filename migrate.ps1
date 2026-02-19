@@ -23,15 +23,15 @@ if (-not (Test-Path $ConfigDir)) { Write-Error "Config dir not found: $ConfigDir
 if (-not (Test-Path $WorkspaceDir)) { Write-Error "Workspace dir not found: $WorkspaceDir"; exit 1 }
 
 # 1. Create target directories on VM
-Write-Host "`n[1/4] Creating directories on VM..."
+Write-Host "`n[1/5] Creating directories on VM..."
 ssh @sshArgs $VmHost "mkdir -p ~/.openclaw/workspace"
 
 # 2. Transfer config (contains openclaw.json, credentials, agents, cron, etc.)
-Write-Host "`n[2/4] Uploading config directory..."
+Write-Host "`n[2/5] Uploading config directory..."
 scp @sshArgs -r "${ConfigDir}\*" "${VmHost}:~/.openclaw/"
 
 # 3. Transfer workspace (contains memory, identity docs, etc.)
-Write-Host "`n[3/4] Uploading workspace directory..."
+Write-Host "`n[3/5] Uploading workspace directory..."
 scp @sshArgs -r "${WorkspaceDir}\*" "${VmHost}:~/.openclaw/workspace/"
 
 # 4. Fix Docker paths in config

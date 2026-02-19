@@ -82,7 +82,7 @@ The Bicep template configures:
 ```bicep
 // Key Vault
 resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
-  name: 'kv-${uniqueString(resourceGroup().id)}'
+  name: 'kv-oc-${uniqueString(resourceGroup().id)}'
   properties: {
     enableRbacAuthorization: true
     // ...
@@ -159,7 +159,7 @@ az role assignment list --scope /subscriptions/.../resourceGroups/.../providers/
 
 Verify managed identity:
 ```bash
-az vm identity show --resource-group rg-openclaw --name vm-openclaw
+az vm identity show --resource-group rg-openclaw --name openclaw-vm
 ```
 
 ### Secret Not Found
@@ -194,7 +194,7 @@ export NEW_SECRET=$(az keyvault secret show --vault-name "$VAULT_NAME" --name NE
 
 ## Backup
 
-Key Vault supports soft delete by default. Deleted secrets can be recovered for 90 days.
+Key Vault supports soft delete by default. Deleted secrets can be recovered for 7 days.
 
 For critical secrets, consider:
 - Backup via `az keyvault secret backup`
