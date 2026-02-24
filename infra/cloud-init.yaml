@@ -22,7 +22,7 @@ runcmd:
   - npm install -g openclaw@latest
   - npm install -g @github/copilot@prerelease
 
-  # Create a script to fetch secrets from Key Vault via managed identity
+  # Create a script to fetch secrets from Key Vault via managed identity (interactive use)
   - |
     cat > /usr/local/bin/openclaw-fetch-secrets << 'SCRIPT'
     #!/bin/bash
@@ -49,6 +49,57 @@ runcmd:
     SCRIPT
   - chmod +x /usr/local/bin/openclaw-fetch-secrets
 
+  # Write vault name to config file (read by openclaw-fetch-kv at service start)
+  - mkdir -p /etc/openclaw
+  - echo "kv-oc-rxymqpr5urgyw" > /etc/openclaw/vault-name
+
+  # Create a script for systemd ExecStartPre (writes env file instead of exporting)
+  - |
+    cat > /usr/local/bin/openclaw-fetch-kv << 'SCRIPT'
+    #!/bin/bash
+    set -euo pipefail
+
+    CONFIG_FILE="/etc/openclaw/vault-name"
+    ENV_FILE="/run/openclaw-gateway/env"
+
+    if [ ! -f "$CONFIG_FILE" ]; then
+      echo "ERROR: Vault config not found at $CONFIG_FILE" >&2
+      exit 1
+    fi
+    VAULT_NAME="$(cat "$CONFIG_FILE" | tr -d '[:space:]')"
+    if [ -z "$VAULT_NAME" ]; then
+      echo "ERROR: Vault name is empty in $CONFIG_FILE" >&2
+      exit 1
+    fi
+
+    if ! az login --identity --allow-no-subscriptions >/dev/null 2>&1; then
+      echo "ERROR: Managed identity login failed" >&2
+      exit 1
+    fi
+
+    > "$ENV_FILE"
+    SECRET_COUNT=0
+    for SECRET_NAME in $(az keyvault secret list --vault-name "$VAULT_NAME" --query "[].name" -o tsv 2>&1); do
+      ENV_VAR=$(echo "$SECRET_NAME" | tr '[:lower:]-' '[:upper:]_')
+      VALUE="$(az keyvault secret show --vault-name "$VAULT_NAME" --name "$SECRET_NAME" --query value -o tsv 2>&1)" || {
+        echo "WARNING: Failed to fetch secret $SECRET_NAME" >&2
+        continue
+      }
+      if [ -n "$VALUE" ]; then
+        echo "${ENV_VAR}=${VALUE}" >> "$ENV_FILE"
+        SECRET_COUNT=$((SECRET_COUNT + 1))
+      fi
+    done
+    chmod 600 "$ENV_FILE"
+
+    if [ "$SECRET_COUNT" -eq 0 ]; then
+      echo "WARNING: No secrets fetched from $VAULT_NAME" >&2
+      exit 1
+    fi
+    echo "Fetched $SECRET_COUNT secrets from Key Vault"
+    SCRIPT
+  - chmod +x /usr/local/bin/openclaw-fetch-kv
+
   # Create systemd service for OpenClaw gateway (loopback-only for security)
   # NOTE: Canonical copy lives at config/openclaw-gateway.service — keep in sync.
   - |
@@ -61,9 +112,12 @@ runcmd:
     [Service]
     Type=simple
     User=azureuser
+    RuntimeDirectory=openclaw-gateway
     Environment=HOME=/home/azureuser
     Environment=NODE_ENV=production
-    Environment=PATH=/usr/local/bin:/usr/bin:/bin
+    Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    ExecStartPre=/usr/local/bin/openclaw-fetch-kv
+    EnvironmentFile=-/run/openclaw-gateway/env
     ExecStart=/usr/bin/openclaw gateway --bind loopback --port 18789
     Restart=always
     RestartSec=5

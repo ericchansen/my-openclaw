@@ -8,6 +8,8 @@
 
 # Bicep build artifacts
 infra/main.json
+infra/budget.json
+infra/main-subscription.json
 
 # OS files
 .DS_Store
