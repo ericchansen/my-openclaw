@@ -238,3 +238,4 @@ output sshCommand string = 'ssh ${adminUsername}@${publicIp.properties.dnsSettin
 output keyVaultName string = keyVault.name
 output keyVaultUri string = keyVault.properties.vaultUri
 output gatewayNote string = 'Gateway is loopback-only. Access via Tailscale IP or SSH tunnel on port 18789.'
+output vmPrincipalId string = vm.identity.principalId
