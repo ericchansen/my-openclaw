@@ -11,9 +11,14 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=azureuser
+RuntimeDirectory=openclaw-gateway
 Environment=HOME=/home/azureuser
 Environment=NODE_ENV=production
-Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Auto-fetch Key Vault secrets before starting
+ExecStartPre=/usr/local/bin/openclaw-fetch-kv
+EnvironmentFile=-/run/openclaw-gateway/env
 
 # Bind to loopback only — use Tailscale serve for external access
 ExecStart=/usr/bin/openclaw gateway --bind loopback --port 18789
