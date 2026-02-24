@@ -16,7 +16,7 @@ Environment=HOME=/home/azureuser
 Environment=NODE_ENV=production
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-# Auto-fetch Key Vault secrets before starting
+# Auto-fetch Key Vault secrets before starting (vault name from /etc/openclaw/vault-name)
 ExecStartPre=/usr/local/bin/openclaw-fetch-kv
 EnvironmentFile=-/run/openclaw-gateway/env
 
