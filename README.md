@@ -33,6 +33,8 @@ my-openclaw/
 │   └── todo-conventions.md       # Task tracking guidelines
 ├── infra/
 │   ├── main.bicep                # Azure resources (VM, Key Vault, VNet)
+│   ├── main-subscription.bicep   # Subscription-scoped RBAC + budget
+│   ├── budget.bicep              # Monthly budget with email alerts
 │   ├── main.bicepparam           # Deployment parameters
 │   └── cloud-init.yaml           # VM bootstrap (Node, Tailscale, OpenClaw)
 ├── azure.yaml                    # azd project manifest
@@ -179,12 +181,19 @@ See the `docs/` folder for operational patterns:
 Azure Resource Group
 ├── VM (Ubuntu 24.04 ARM64)
 │   ├── System-assigned managed identity
+│   │   ├── Key Vault Secrets User (Key Vault scope)
+│   │   ├── Cost Management Contributor (subscription scope)
+│   │   └── Contributor (subscription scope)
 │   ├── OpenClaw gateway (systemd, loopback)
 │   ├── Tailscale (mesh VPN)
 │   └── Copilot CLI
 ├── Key Vault (RBAC, secrets)
 ├── VNet + NSG (SSH only)
 └── Public IP (static, DNS)
+
+Subscription-scoped
+├── Monthly budget ($150, alerts at $100/$135/$150)
+└── RBAC role assignments (Cost Mgmt Contributor, Contributor)
 ```
 
 ## License
