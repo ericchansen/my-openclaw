@@ -17,6 +17,56 @@ Before doing anything else:
 
 Don't ask permission. Just do it.
 
+## Before Asking the Human for Help
+
+**VERIFY THE NEED IS REAL.** If your memory says "blocker: need [your human] to do X":
+1. Run a command to check if the blocker still exists
+2. Only then ask for help
+3. Memory files are stale hints, not ground truth — state changes between sessions
+
+This rule exists because agents waste their human's time asking about things that were already resolved. One verification command would have prevented it.
+
+## How to Do Work
+
+**Build knowledge through doubt:**
+- Every belief is a hypothesis. Proactively try to disprove your assumptions — if they survive, you can trust them more. If they don't, you've learned something better.
+- Use Copilot CLI `/research` not just for gathering info, but for stress-testing what you think you know.
+- This applies continuously: before, during, and after tasks. Not a pre-flight checklist — a way of thinking.
+
+**Right-size the tool:**
+- Chat, quick reads, status checks, web searches → do it directly
+- Small edits (config tweak, script, single file) → `edit`/`write`/`exec` directly
+- Medium/large work (multi-file feature, full project) → Copilot CLI in tmux
+- Debugging OpenClaw → read source at OpenClaw's install location (typically `/usr/lib/node_modules/openclaw/` on Linux) — READ-ONLY
+
+**Copilot CLI pattern** (for bigger tasks):
+```bash
+SOCKET="${TMPDIR:-/tmp}/copilot-agents.sock"
+SESSION=descriptive-name
+tmux -S "$SOCKET" new-session -d -s "$SESSION" -c /path/to/repo
+tmux -S "$SOCKET" send-keys -t "$SESSION" "copilot --yolo" Enter
+sleep 8
+# Write prompt to a private temp file (NEVER use send-keys -l for multi-line).
+# mktemp + chmod 600 avoids world-readable leaks and concurrent-clobber races.
+PROMPT_FILE=$(mktemp)
+chmod 600 "$PROMPT_FILE"
+cat > "$PROMPT_FILE" << 'PROMPT_EOF'
+your task here
+PROMPT_EOF
+tmux -S "$SOCKET" load-buffer "$PROMPT_FILE"
+tmux -S "$SOCKET" paste-buffer -t "$SESSION"
+sleep 1
+tmux -S "$SOCKET" send-keys -t "$SESSION" Enter
+rm -f "$PROMPT_FILE"
+# Verify 5s later — if you see [Paste #N], send Enter again
+sleep 5
+tmux -S "$SOCKET" capture-pane -p -t "$SESSION" -S -5
+```
+
+Use `/research` and `/plan` modes for complex tasks before building.
+
+Check progress manually: `tmux -S "$SOCKET" capture-pane -p -t SESSION -S -15`
+
 ## Memory
 
 You wake up fresh each session. These files are your continuity:
@@ -225,3 +275,19 @@ The goal: Be helpful without being annoying. Check in a few times a day, do usef
 ## Make It Yours
 
 This is a starting point. Add your own conventions, style, and rules as you figure out what works.
+
+## 🛑 System Config Changes — HARD RULES
+
+You can break yourself by modifying config files incorrectly. These rules exist because of real incidents.
+
+**Before ANY change to `openclaw.json`:**
+1. Run `openclaw doctor` to see current state
+2. Make the change
+3. Run `openclaw doctor` again — if it reports errors, REVERT immediately
+4. Do NOT restart the gateway unless `openclaw doctor` passes clean
+
+**NEVER modify systemd service files without your human's approval.**
+
+**NEVER add config keys you haven't verified exist.**
+
+**Gateway networking is solved territory.** A working pattern: `--bind loopback` + `tailscale.mode: "serve"` exposes the dashboard at `https://<your-vm>.<your-tailnet>.ts.net`. If yours is similar, don't tinker with it without a concrete reason.
