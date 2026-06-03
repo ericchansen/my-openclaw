@@ -113,6 +113,25 @@ sleep 0.1
 tmux -S "$SOCKET" send-keys -t "$SESSION" Enter
 ```
 
+**⚠️ For multi-line prompts, use `load-buffer` + `paste-buffer` instead.** `send-keys -l` with multi-line text can leave Copilot CLI showing `[Paste #N - X lines]` that never auto-submits. The reliable pattern (uses `mktemp` + `chmod 600` to avoid world-readable leaks and concurrent-clobber races):
+
+```bash
+PROMPT_FILE=$(mktemp)
+chmod 600 "$PROMPT_FILE"
+cat > "$PROMPT_FILE" << 'PROMPT_EOF'
+multi-line
+prompt content
+PROMPT_EOF
+tmux -S "$SOCKET" load-buffer "$PROMPT_FILE"
+tmux -S "$SOCKET" paste-buffer -t "$SESSION"
+sleep 1
+tmux -S "$SOCKET" send-keys -t "$SESSION" Enter
+rm -f "$PROMPT_FILE"
+# Verify 5s later — if you see [Paste #N], send Enter again
+sleep 5
+tmux -S "$SOCKET" capture-pane -p -t "$SESSION" -S -5
+```
+
 ## Control Keys
 
 | Action | Command |
@@ -211,6 +230,26 @@ tmux -S "$SOCKET" send-keys -t "$SESSION" -l -- "Implement this plan"
 sleep 0.1 && tmux -S "$SOCKET" send-keys -t "$SESSION" Enter
 ```
 
+## Resuming Sessions
+
+Always use Copilot's built-in resume feature instead of starting fresh:
+
+```bash
+# Resume most recent session
+copilot --continue
+
+# Resume a specific session by ID
+copilot --resume <session-id>
+
+# Resume with auto-approval
+copilot --allow-all-tools --resume
+
+# List previous sessions to find IDs
+copilot --resume  # (no ID = interactive picker)
+```
+
+**Rule: Never start a new session when you can resume.** Context is expensive. If the session exists, resume it.
+
 ## Cleanup
 
 ```bash
@@ -280,6 +319,31 @@ git worktree remove /tmp/issue-99
 3. **Don't take over** — if Copilot fails/hangs, report back or respawn. Don't silently hand-code the solution yourself.
 4. **Monitor with capture-pane** — check progress without interfering.
 5. **One task per session** — use `/clear` or `/new` before starting unrelated work.
+
+## Error Recovery
+
+When things go wrong with a Copilot CLI session:
+
+| Situation | Action |
+|-----------|--------|
+| **Copilot CLI crashes** | Kill the tmux session, respawn a fresh one, re-send the task. |
+| **No `❯` prompt for 10+ min** | Capture output — it may be working on a long task. If truly hung, send `Escape` or `C-c`, then retry. |
+| **Context window full** | Send `/compact` to compress context. If that fails, `/clear` and re-send task with fresh context. |
+| **Copilot asks clarifying question** | Capture the question, answer it via `send-keys`. Subagents can handle arrow-key menus. |
+| **Timeout from `poll_agent`** | Check output first (it may still be working). If stuck, escalate to user via your messaging channel. |
+
+**Prefer auto-notify over polling** — tell Copilot to run `openclaw system event --text 'Done: ...' --mode now` on completion. This is faster and more reliable than polling for `❯`.
+
+## Cron / Orchestrator Configuration
+
+**⚠️ OpenClaw crons are managed via the cron tool API, NOT by editing `openclaw.json`.**
+
+Adding a `"cron"` array to `openclaw.json` causes a validation error ("expected object, received array") and breaks the gateway. Use:
+- `openclaw cron list` — view existing cron jobs
+- `openclaw cron create` — create new cron jobs
+- `openclaw cron update` — modify existing cron jobs
+
+Before creating a new cron, always check if one already exists — orchestrator crons may have been set up in an earlier session that isn't in your current context.
 
 ## Tips
 
