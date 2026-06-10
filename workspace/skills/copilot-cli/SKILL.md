@@ -47,8 +47,12 @@ The subagent will:
 SOCKET="${TMPDIR:-/tmp}/copilot-agents.sock"
 SESSION="copilot-1"
 
-# Create session and launch Copilot CLI in yolo mode
-tmux -S "$SOCKET" new-session -d -s "$SESSION" -c ~/repos/my-project
+# Create session and launch Copilot CLI in yolo mode.
+# -e OPENCLAW_JOB_ID inherits into the Copilot process so the agentStop hook
+# (~/.copilot/hooks/openclaw-agent-stop.sh) can key its sentinel correctly.
+# Requires tmux >= 3.0 (run `tmux -V` to verify).
+tmux -S "$SOCKET" new-session -d -s "$SESSION" -c ~/repos/my-project \
+  -e OPENCLAW_JOB_ID="$SESSION"
 tmux -S "$SOCKET" send-keys -t "$SESSION" "copilot --yolo" Enter
 
 # Wait for startup, then send a task
@@ -149,9 +153,11 @@ Spawn multiple agents for parallel work:
 ```bash
 SOCKET="${TMPDIR:-/tmp}/copilot-army.sock"
 
-# Create agents in separate worktrees/repos
+# Create agents in separate worktrees/repos.
+# Pass OPENCLAW_JOB_ID so the agentStop hook can identify each agent.
 for i in 1 2 3; do
-  tmux -S "$SOCKET" new-session -d -s "agent-$i" -c ~/repos/project-$i
+  tmux -S "$SOCKET" new-session -d -s "agent-$i" -c ~/repos/project-$i \
+    -e OPENCLAW_JOB_ID="agent-$i"
   tmux -S "$SOCKET" send-keys -t "agent-$i" "copilot --yolo" Enter
 done
 
@@ -260,9 +266,24 @@ tmux -S "$SOCKET" kill-session -t "$SESSION"
 tmux -S "$SOCKET" kill-server
 ```
 
-## Auto-Notify on Completion
+## Completion Notification
 
-For long-running tasks, tell Copilot to ping OpenClaw when done (instead of waiting for polling):
+### Preferred: agentStop hook (structural, sub-second)
+
+If the host has `~/.copilot/hooks/openclaw-notify.json` installed, Copilot CLI's first-party `agentStop` lifecycle event automatically writes `/tmp/copilot-done/<JOB_ID>.done` and calls `openclaw system event --mode now` every time the agent returns to `❯`. No prompt instructions needed — it's just there.
+
+For this to work you only need to:
+1. Have the hook installed (one-time setup, see runbook below)
+2. Pass `-e OPENCLAW_JOB_ID="$SESSION"` to `tmux new-session` (already done in all examples above)
+3. Use tmux >= 3.0 (the `-e` flag requires it; run `tmux -V` to verify)
+
+Then the watcher cron's role becomes a safety net — it only fires for cases the hook can't catch (mid-tool hangs, `-p` mode COPILOT_DONE markers, orphan-sentinel cleanup).
+
+**Runbook:** `~/.openclaw/workspace/docs/copilot-hook-runbook.md` covers verification, disabling, debugging, and gateway-down behavior.
+
+### Legacy fallback: prompt-injection notification (avoid if hooks available)
+
+For hosts without the hook installed, you can ask Copilot to run an `openclaw system event` itself when done:
 
 ```bash
 tmux -S "$SOCKET" send-keys -t "$SESSION" -l -- "Build the REST API for todos.
@@ -272,7 +293,7 @@ openclaw system event --text 'Done: Built todos REST API' --mode now"
 sleep 0.1 && tmux -S "$SOCKET" send-keys -t "$SESSION" Enter
 ```
 
-This triggers an immediate wake event — you get notified in seconds, not minutes.
+This is **unreliable** — Copilot may forget the instruction after context compaction, on multi-stage tasks, or if it crashes before finishing. Prefer the hook approach.
 
 ## Progress Updates (for subagents)
 
@@ -297,10 +318,12 @@ git worktree add -b fix/issue-99 /tmp/issue-99 main
 
 # Launch Copilot in each
 SOCKET="${TMPDIR:-/tmp}/copilot-agents.sock"
-tmux -S "$SOCKET" new-session -d -s "issue-78" -c /tmp/issue-78
+tmux -S "$SOCKET" new-session -d -s "issue-78" -c /tmp/issue-78 \
+  -e OPENCLAW_JOB_ID="issue-78"
 tmux -S "$SOCKET" send-keys -t "issue-78" "copilot --yolo" Enter
 
-tmux -S "$SOCKET" new-session -d -s "issue-99" -c /tmp/issue-99
+tmux -S "$SOCKET" new-session -d -s "issue-99" -c /tmp/issue-99 \
+  -e OPENCLAW_JOB_ID="issue-99"
 tmux -S "$SOCKET" send-keys -t "issue-99" "copilot --yolo" Enter
 
 # After completion, create PRs

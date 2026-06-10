@@ -43,7 +43,11 @@ This rule exists because agents waste their human's time asking about things tha
 ```bash
 SOCKET="${TMPDIR:-/tmp}/copilot-agents.sock"
 SESSION=descriptive-name
-tmux -S "$SOCKET" new-session -d -s "$SESSION" -c /path/to/repo
+# -e OPENCLAW_JOB_ID inherits into the Copilot process so the agentStop hook
+# (~/.copilot/hooks/openclaw-agent-stop.sh, if installed) can key its sentinel.
+# Requires tmux >= 3.0.
+tmux -S "$SOCKET" new-session -d -s "$SESSION" -c /path/to/repo \
+  -e OPENCLAW_JOB_ID="$SESSION"
 tmux -S "$SOCKET" send-keys -t "$SESSION" "copilot --yolo" Enter
 sleep 8
 # Write prompt to a private temp file (NEVER use send-keys -l for multi-line).
