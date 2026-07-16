@@ -1,0 +1,16 @@
+[Unit]
+Description=Run bounded OpenClaw runtime health checks
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=__OPENCLAW_USER__
+Environment=HOME=/home/__OPENCLAW_USER__
+EnvironmentFile=/etc/openclaw/runtime.env
+ExecStart=/usr/local/sbin/openclaw-health-check
+RuntimeDirectory=openclaw-health
+RuntimeDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+TimeoutStartSec=6m

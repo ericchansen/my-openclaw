@@ -13,9 +13,7 @@ param budgetStartDate string
 param budgetAmount int = 150
 
 @description('Email addresses for budget notifications')
-param contactEmails array = [
-  'ericchansen@gmail.com'
-]
+param contactEmails array = []
 
 // --- Budget ---
 

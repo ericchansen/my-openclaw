@@ -1,185 +1,74 @@
-# TODO Conventions
+# Plans, TODOs, and Task Records
 
-Guidelines for managing TODO.md and task tracking in your workspace.
+Use three distinct mechanisms. They solve different problems.
 
-## File Location
+## Structured Turn Plan
 
-- **Primary:** `workspace/TODO.md` — Your active task list
-- **Archived:** `workspace/memory/` — Move completed items to daily notes
+Use the plan tool for non-trivial work in the current request.
 
-## TODO.md Structure
+- Write steps as observable outcomes.
+- Keep exactly one active step when work is underway.
+- Include verification in the plan rather than treating it as an afterthought.
+- Update the plan when evidence changes the approach.
+- Do not carry a transient plan into durable memory verbatim.
+
+Example:
+
+```text
+1. Inspect current schema and preserved channel state
+2. Dry-run the minimal configuration patch
+3. Apply and validate secrets/channels
+4. Verify health and rollback readiness
+```
+
+## Durable `TODO.md`
+
+Use the workspace TODO file for commitments that must survive the current session:
 
 ```markdown
-# TODO
-
-## 🔴 Urgent
-- [ ] Fix production bug in auth service
-- [ ] Respond to client email
-
-## 📋 Active
-- [ ] Implement new API endpoint
-- [ ] Review PR #42
-- [ ] Update documentation
-
-## 📅 Scheduled
-- [ ] Monday: Weekly standup prep
-- [ ] Friday: Deploy v2.0
-
-## 💡 Ideas / Someday
-- [ ] Refactor database layer
-- [ ] Explore new caching strategy
-- [ ] Write blog post about deployment
-
-## ✅ Recently Completed
-- [x] Set up CI/CD pipeline (2024-01-15)
-- [x] Fix login redirect bug (2024-01-14)
+- [ ] Actionable outcome
+  - Owner: parent | user | named system
+  - Next action: one concrete step
+  - Blocked by: exact dependency, or none
+  - Due/review: ISO date if meaningful
+  - Source: request or decision date
+  - Done when: observable completion test
 ```
 
-## Priority Levels
+Rules:
 
-| Symbol | Meaning | Action |
-|--------|---------|--------|
-| 🔴 | Urgent | Do today |
-| 📋 | Active | Current sprint/week |
-| 📅 | Scheduled | Has a specific date |
-| 💡 | Ideas | No timeline, capture for later |
-| ✅ | Completed | Move to memory after a few days |
+- one deliverable per checkbox;
+- phrase tasks as actions, not topics;
+- record a real next action for every blocker;
+- remove or archive completed/stale entries during curation;
+- never put credentials, personal transcripts, or speculative promises in TODOs.
 
-## Task Format
+## Background Task Ledger
 
-### Basic Task
-```markdown
-- [ ] Task description
+OpenClaw tasks record detached execution; they do not schedule future work. Inspect with:
+
+```bash
+openclaw tasks list
+openclaw tasks show <task-id>
+openclaw tasks audit
+openclaw tasks cancel <task-id>
 ```
 
-### Task with Context
-```markdown
-- [ ] Task description
-  - Context: Why this matters
-  - Blocked by: Other task or person
-  - Link: https://github.com/issue/123
-```
+Official reference: [Tasks](https://docs.openclaw.ai/tools/tasks).
 
-### Task with Date
-```markdown
-- [ ] Task description (due: 2024-01-20)
-- [ ] Another task @2024-01-20
-```
+Use task records for current state and audit evidence. Put durable follow-up in `TODO.md`; use cron for schedules.
 
-## Agent Behavior
+## Parent Ownership
 
-### Reading TODO.md
+Delegated child work remains one parent plan item. Child reports do not close TODOs automatically. The parent calls `sessions_yield`, verifies integrated evidence, then updates the plan/TODO. Only the parent declares completion.
 
-The agent should check TODO.md during:
-- Session start (main sessions)
-- Heartbeats (if configured)
-- When asked about tasks
+## Triage
 
-### Updating TODO.md
+At session start:
 
-When work completes:
-```markdown
-# Before
-- [ ] Fix the auth bug
+1. Check relevant durable TODOs.
+2. Verify current state before trusting an old blocker.
+3. Promote only today's actionable work into the structured plan.
+4. Inspect the task ledger only when detached work is actually relevant.
 
-# After  
-- [x] Fix the auth bug (2024-01-15)
-```
-
-### Moving Completed Items
-
-Periodically (during heartbeats or cleanup):
-1. Move checked items to `memory/YYYY-MM-DD.md`
-2. Keep only last 3-5 completed items in TODO.md
-3. Archive old items to maintain readability
-
-## Adding Tasks
-
-### Via Conversation
-
-```
-User: "Add a task to fix the login page"
-Agent: *Updates TODO.md*
-
-Added to TODO.md under 📋 Active:
-- [ ] Fix the login page
-```
-
-### Via Command
-
-```
-/todo add Fix the login page
-/todo add urgent Review security audit
-/todo list
-/todo done "Fix the login page"
-```
-
-## Integration with Memory
-
-### Daily Notes
-
-When completing tasks, add context to daily notes:
-
-```markdown
-# memory/2024-01-15.md
-
-## Tasks Completed
-- Fixed auth bug — was a token expiry issue, added refresh logic
-- Reviewed PR #42 — approved with minor suggestions
-```
-
-### MEMORY.md
-
-For significant accomplishments, update long-term memory:
-
-```markdown
-## Projects
-
-### Auth System Overhaul (Jan 2024)
-- Fixed token refresh bug
-- Added rate limiting
-- Improved error messages
-```
-
-## Best Practices
-
-1. **Keep it scannable** — One line per task
-2. **Use sections** — Group by priority/category
-3. **Add dates** — Know when things were added/completed
-4. **Include context** — Future-you will thank you
-5. **Regular cleanup** — Archive completed items weekly
-6. **Don't over-detail** — This is a list, not documentation
-
-## Example Workflow
-
-### Morning
-1. Agent reads TODO.md
-2. Mentions urgent items: "You have 2 urgent tasks today"
-3. Offers to help with first item
-
-### During Work
-1. User completes task
-2. Agent marks as done with date
-3. Adds brief note to daily memory
-
-### Weekly Review
-1. Agent reviews TODO.md during heartbeat
-2. Moves old completed items to archive
-3. Suggests reprioritizing stale items
-4. Updates MEMORY.md with significant completions
-
-## Anti-Patterns
-
-❌ **Don't:**
-- Create a new TODO file for each project
-- Leave completed items forever
-- Add tasks without any priority
-- Make tasks too vague ("fix stuff")
-- Ignore TODO.md for weeks
-
-✅ **Do:**
-- One central TODO.md
-- Archive completed items regularly
-- Use priority sections
-- Be specific ("fix login redirect on mobile Safari")
-- Review and update frequently
+This avoids using one giant list as plan, scheduler, history, and audit log simultaneously.

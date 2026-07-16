@@ -1,0 +1,18 @@
+[Unit]
+Description=Create and upload a verified OpenClaw backup
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=__OPENCLAW_USER__
+Environment=HOME=/home/__OPENCLAW_USER__
+EnvironmentFile=/etc/openclaw/runtime.env
+ExecStart=/usr/local/sbin/openclaw-backup
+StateDirectory=openclaw-runtime
+StateDirectoryMode=0750
+UMask=0077
+PrivateTmp=true
+NoNewPrivileges=true
+TimeoutStartSec=4h
+SuccessExitStatus=0

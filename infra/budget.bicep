@@ -10,9 +10,7 @@ param budgetName string = 'openclaw-monthly-budget'
 param amount int = 150
 
 @description('Email addresses for budget notifications')
-param contactEmails array = [
-  'ericchansen@gmail.com'
-]
+param contactEmails array = []
 
 @description('Budget start date (first of current month)')
 param startDate string // e.g. '2026-02-01T00:00:00Z'
@@ -33,6 +31,9 @@ resource budget 'Microsoft.Consumption/budgets@2023-11-01' = {
         operator: 'GreaterThan'
         threshold: 67
         contactEmails: contactEmails
+        contactRoles: [
+          'Owner'
+        ]
         thresholdType: 'Actual'
       }
       NearLimit: {
@@ -40,6 +41,9 @@ resource budget 'Microsoft.Consumption/budgets@2023-11-01' = {
         operator: 'GreaterThan'
         threshold: 90
         contactEmails: contactEmails
+        contactRoles: [
+          'Owner'
+        ]
         thresholdType: 'Actual'
       }
       BudgetExceeded: {
@@ -47,6 +51,9 @@ resource budget 'Microsoft.Consumption/budgets@2023-11-01' = {
         operator: 'GreaterThan'
         threshold: 100
         contactEmails: contactEmails
+        contactRoles: [
+          'Owner'
+        ]
         thresholdType: 'Actual'
       }
       ForecastedOverage: {
@@ -54,6 +61,9 @@ resource budget 'Microsoft.Consumption/budgets@2023-11-01' = {
         operator: 'GreaterThan'
         threshold: 100
         contactEmails: contactEmails
+        contactRoles: [
+          'Owner'
+        ]
         thresholdType: 'Forecasted'
       }
     }

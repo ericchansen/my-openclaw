@@ -1,0 +1,91 @@
+{
+  "agents": {
+    "defaults": {
+      "contextPruning": {
+        "mode": "cache-ttl",
+        "ttl": "1h",
+        "keepLastAssistants": 3,
+        "softTrimRatio": 0.3,
+        "hardClearRatio": 0.5,
+        "minPrunableToolChars": 50000
+      },
+      "subagents": {
+        "delegationMode": "suggest",
+        "maxConcurrent": 4,
+        "maxSpawnDepth": 2,
+        "maxChildrenPerAgent": 3,
+        "model": "github-copilot/claude-sonnet-4.6",
+        "thinking": "medium",
+        "runTimeoutSeconds": 2700
+      },
+      "memorySearch": {
+        "provider": "github-copilot",
+        "model": "text-embedding-3-small",
+        "query": {
+          "hybrid": {
+            "enabled": true,
+            "vectorWeight": 0.7,
+            "textWeight": 0.3,
+            "candidateMultiplier": 4,
+            "mmr": {
+              "enabled": true,
+              "lambda": 0.7
+            },
+            "temporalDecay": {
+              "enabled": true,
+              "halfLifeDays": 30
+            }
+          }
+        },
+        "cache": {
+          "enabled": true,
+          "maxEntries": 50000
+        },
+        "enabled": true
+      }
+    }
+  },
+  "memory": {
+    "backend": "builtin",
+    "citations": "auto"
+  },
+  "tools": {
+    "experimental": {
+      "planTool": true
+    },
+    "toolSearch": {
+      "enabled": true,
+      "mode": "directory",
+      "searchDefaultLimit": 8,
+      "maxSearchLimit": 20
+    }
+  },
+  "hooks": {
+    "defaultSessionKey": "hook:ingress",
+    "allowedAgentIds": [
+      "main"
+    ]
+  },
+  "diagnostics": {
+    "enabled": true,
+    "memoryPressureSnapshot": true
+  },
+  "logging": {
+    "level": "info",
+    "file": "/var/log/openclaw/openclaw.log",
+    "maxFileBytes": 104857600,
+    "consoleLevel": "info",
+    "consoleStyle": "compact",
+    "redactSensitive": "tools"
+  },
+  "plugins": {
+    "allow": [
+      "brave",
+      "browser",
+      "discord",
+      "github-copilot",
+      "memory-core",
+      "telegram"
+    ]
+  }
+}

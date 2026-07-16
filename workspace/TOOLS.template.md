@@ -1,40 +1,32 @@
-# TOOLS.md - Local Notes
+# TOOLS.md — Local Environment Notes
 
-Skills define _how_ tools work. This file is for _your_ specifics — the stuff that's unique to your setup.
+Store only non-secret facts that help operate this specific environment. Tool behavior belongs in skills and official documentation.
 
-## What Goes Here
+## Useful Local Facts
 
-Things like:
+- Hosts and SSH aliases:
+- Repository roots and safe worktree parent:
+- Service names and health endpoints:
+- Preferred browser/device:
+- Channel destinations and public IDs:
+- Audio, camera, or display names:
 
-- Camera names and locations
-- SSH hosts and aliases
-- Preferred voices for TTS
-- Speaker/room names
-- Device nicknames
-- Anything environment-specific
+## Secret Handling
 
-## Examples
+Record secret **references** and provider/item names only. Never copy values, tokens, recovery codes, cookies, private keys, or connection strings here.
 
-```markdown
-### Cameras
+- Secret provider:
+- Key Vault name:
+- Resolver path:
+- Approved SecretRef IDs:
 
-- living-room → Main area, 180° wide angle
-- front-door → Entrance, motion-triggered
+Use managed identity and allowlisted SecretRef resolution. Do not export a vault into the process environment. Verification must check presence, permissions, schema, and service behavior without printing values.
 
-### SSH
+## Operational Notes
 
-- home-server → 192.168.1.100, user: admin
+- Commands should have bounded timeouts and output.
+- Preserve existing channel, Gmail hook, cron, identity, and auth-profile configuration during changes.
+- Use native `sessions_spawn` / `sessions_yield` for delegated work. External coding tools run only inside their owning native child.
+- Prefer deterministic cron commands for exact jobs and the task ledger for observing detached work.
 
-### TTS
-
-- Preferred voice: "Nova" (warm, slightly British)
-- Default speaker: Kitchen HomePod
-```
-
-## Why Separate?
-
-Skills are shared. Your setup is yours. Keeping them apart means you can update skills without losing your notes, and share skills without leaking your infrastructure.
-
----
-
-Add whatever helps you do your job. This is your cheat sheet.
+Keep this file short, current, and safe to read at session start.
