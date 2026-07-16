@@ -1,202 +1,86 @@
-# Key Vault Integration
+# Azure Key Vault SecretRefs
 
-OpenClaw on Azure uses Key Vault for secure secret management. Secrets are fetched at runtime via the VM's managed identity — no secrets in config files.
+OpenClaw 2026.7.1 should resolve supported secrets on demand through an allowlisted exec provider backed by Azure managed identity. Do not export the vault into the gateway environment.
 
-## Architecture
+Official references: [OpenClaw secrets](https://docs.openclaw.ai/gateway/secrets), [SecretRef credential surface](https://docs.openclaw.ai/reference/secretref-credential-surface), and [Azure VM managed identity with Key Vault](https://learn.microsoft.com/azure/key-vault/general/tutorial-net-virtual-machine).
 
-```
-Azure Key Vault
-    ↓ (RBAC: Key Vault Secrets User)
-VM Managed Identity
-    ↓ (az keyvault secret show)
-Environment Variables
-    ↓
-OpenClaw Gateway
-```
+## Provider Contract
 
-## Secrets Stored
+The template registers `/usr/local/bin/openclaw-keyvault-resolver` as the `azure-key-vault` exec provider. OpenClaw 2026.7.1 requires an exec provider command to be owned by the gateway user, so the installer uses that owner with mode `0555` inside the root-owned `/usr/local/bin` directory. Keep the resolver's configuration files root-owned and non-writable, keep the command in the allowlisted trusted directory, and use an absolute path.
 
-| Secret Name | Purpose |
-|-------------|---------|
-| `OPENCLAW-GATEWAY-TOKEN` | Gateway authentication token |
-| `GITHUB-TOKEN` | GitHub PAT for repo operations |
-| `BRAVE-API-KEY` | Brave Search API key (optional) |
-| `TELEGRAM-BOT-TOKEN` | Telegram bot token (optional) |
-| `DISCORD-BOT-TOKEN` | Discord bot token (optional) |
+OpenClaw sends one protocol-v1 JSON request on stdin:
 
-## Fetching Secrets
-
-### Using the Helper Script
-
-The `openclaw-fetch-secrets` script is installed by cloud-init:
-
-```bash
-# Load secrets into environment
-source openclaw-fetch-secrets kv-your-vault-name
-
-# Verify
-echo $OPENCLAW_GATEWAY_TOKEN
-echo $GITHUB_TOKEN
+```json
+{"protocolVersion":1,"provider":"azure-key-vault","ids":["BRAVE-API-KEY"]}
 ```
 
-### Manual Fetch
+The resolver obtains a managed-identity token directly from Azure Instance Metadata Service (IMDS), calls the Key Vault REST API, reads only requested allowlisted names, and writes one JSON response:
 
-```bash
-# Login with managed identity
-az login --identity --allow-no-subscriptions
-
-# Fetch individual secret
-GITHUB_TOKEN=$(az keyvault secret show \
-  --vault-name kv-your-vault-name \
-  --name GITHUB-TOKEN \
-  --query value -o tsv)
+```json
+{"protocolVersion":1,"values":{"BRAVE-API-KEY":"<resolved internally>"},"errors":{}}
 ```
 
-## Setting Secrets
+This direct path avoids shared Azure CLI login/cache races during concurrent secret audits. Never log stdin, resolved values, response bodies, tokens, or Key Vault debug payloads. Return generic per-ID errors. Keep output and timeouts bounded. Do not enable insecure paths, symlinked commands, arbitrary vault names, caller-provided shell fragments, or broad `passEnv`.
 
-### Azure CLI
+## Least Privilege
 
-```bash
-az keyvault secret set \
-  --vault-name kv-your-vault-name \
-  --name GITHUB-TOKEN \
-  --value "ghp_xxxxxxxxxxxx"
-```
+- Grant the VM identity only `secrets/get` for the required vault/scope.
+- Allowlist the exact IDs: gateway, Telegram, Discord, GitHub/Copilot, Brave, and the Gmail keyring credential required by the supervised watcher.
+- Use separate identities/vaults for environments where practical.
+- Restrict executable ownership and deployment separately from secret-read permission.
+- Rotate in Key Vault; do not rewrite configuration for a value change.
 
-### Azure Portal
+## Template References
 
-1. Navigate to Key Vault → Secrets
-2. Click "+ Generate/Import"
-3. Enter name (use UPPERCASE-WITH-DASHES)
-4. Enter value
-5. Click Create
+Supported fields use:
 
-## Deployment Setup
-
-The Bicep template configures:
-
-1. **Key Vault** with RBAC authorization
-2. **VM Managed Identity** assigned automatically
-3. **Role Assignment** granting "Key Vault Secrets User" to VM
-
-```bicep
-// Key Vault
-resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
-  name: 'kv-oc-${uniqueString(resourceGroup().id)}'
-  properties: {
-    enableRbacAuthorization: true
-    // ...
-  }
-}
-
-// Role assignment for VM
-resource secretsUserRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(keyVault.id, vm.id, 'secrets-user')
-  scope: keyVault
-  properties: {
-    roleDefinitionId: subscriptionResourceId(
-      'Microsoft.Authorization/roleDefinitions',
-      '4633458b-17de-408a-b874-0445c86b69e6' // Key Vault Secrets User
-    )
-    principalId: vm.identity.principalId
-    principalType: 'ServicePrincipal'
-  }
+```json
+{
+  "source": "exec",
+  "provider": "azure-key-vault",
+  "id": "TELEGRAM-BOT-TOKEN"
 }
 ```
 
-## Using Secrets in Config
+The template covers gateway, Telegram, Discord, and Brave search. For an existing GitHub Copilot auth profile, preserve its saved Copilot token in a dedicated `GITHUB-COPILOT-TOKEN` Key Vault entry and migrate the persisted credential to the profile's supported `tokenRef` surface. Do not substitute a generic GitHub PAT. Confirm model entitlement separately.
 
-**Never put actual secrets in config files.** Use environment variables or fetch at runtime.
+OpenClaw 2026.7.1 does not expose the Gmail keyring password as a supported SecretRef field. The gateway must not inherit this credential because host-exec tools inherit its environment. The installer therefore keeps the real `gog` executable at `/usr/local/libexec/gog` and exposes a root-owned `/usr/local/bin/gog` launcher. The launcher resolves only `GOG-KEYRING-PASSWORD` immediately before executing `gog`, so the gateway and unrelated agent subprocesses do not receive it. It must not materialize the value in a file, command line, systemd environment file, or log. If `gog` is installed after initial provisioning, rerun the runtime installer to activate the launcher.
 
-### Gateway Token
+## Channel-Preserving Migration
 
-Set in Key Vault as `OPENCLAW-GATEWAY-TOKEN`. The gateway reads from:
-1. `--token` CLI flag
-2. `OPENCLAW_GATEWAY_TOKEN` environment variable
-3. Config file (not recommended)
+Do not replace the live config with the template.
 
-### GitHub Operations
+1. Back up the active config and capture non-secret health/channel/cron inventories.
+2. Preserve Telegram allowlists/streaming, Discord guild/channel/sender tool restrictions, Gmail hooks, agent bindings, auth profiles, and cron database/state.
+3. Install and permission the resolver without retrieving a value in a terminal.
+4. Add the provider and SecretRefs as a minimal patch.
+5. Dry-run the patch against the installed schema.
+6. Audit and validate.
+7. Apply during a rollback window; restart only if required.
+8. Test each existing channel from its already-onboarded identity. Do not re-onboard or regenerate channel configuration.
 
-Fetch token before git operations:
+## Value-Safe Verification
+
+Run:
 
 ```bash
-GITHUB_TOKEN=$(az keyvault secret show \
-  --vault-name kv-your-vault-name \
-  --name GITHUB-TOKEN \
-  --query value -o tsv)
-
-git push https://x-access-token:$GITHUB_TOKEN@github.com/owner/repo.git branch
+openclaw config patch --stdin --dry-run --json
+openclaw config validate --json
+openclaw secrets audit --check
 ```
 
-### In Workspace Files
+Use `--allow-exec` only in the controlled provider-validation step after permissions and allowlists are verified. Capture exit status and redacted diagnostics, not stdout containing values. A clean audit means supported plaintext credential fields have been migrated; it does not prove every external channel works.
 
-Reference Key Vault in AGENTS.md for agent instructions:
+Verify without `echo`, `printenv`, shell tracing, command substitution, or retrieving a secret through `az keyvault secret show`:
 
-```markdown
-## Credentials
+- managed identity metadata and RBAC assignment identify the intended principal;
+- resolver file owner/mode/path match OpenClaw's enforced exec policy, and its configuration remains root-owned;
+- unknown and disallowed IDs fail safely;
+- config validation and secrets audit are clean;
+- gateway starts with redacted logs;
+- the gateway process environment does not contain `GOG_KEYRING_PASSWORD`;
+- `/usr/local/bin/gog` resolves through the launcher while `/usr/local/libexec/gog` is the root-controlled real executable;
+- existing Telegram, Discord, Gmail, GitHub/Copilot, and Brave operations succeed;
+- logs contain no values or resolver payloads.
 
-Fetch from Key Vault (`kv-your-vault-name`) when needed:
-- GITHUB-TOKEN for git push/PR
-- API keys for integrations
-```
-
-## Security Best Practices
-
-1. **Never commit secrets** — Use `.gitignore` for sensitive files
-2. **Rotate regularly** — Update tokens periodically
-3. **Least privilege** — Only grant necessary permissions
-4. **Audit access** — Review Key Vault logs
-5. **Use managed identity** — No service principal secrets to manage
-
-## Troubleshooting
-
-### "Access denied" Error
-
-Check role assignment:
-```bash
-az role assignment list --scope /subscriptions/.../resourceGroups/.../providers/Microsoft.KeyVault/vaults/kv-xxx
-```
-
-Verify managed identity:
-```bash
-az vm identity show --resource-group rg-openclaw --name openclaw-vm
-```
-
-### Secret Not Found
-
-List available secrets:
-```bash
-az keyvault secret list --vault-name kv-your-vault-name --query "[].name" -o tsv
-```
-
-### Login Issues
-
-Ensure managed identity is enabled:
-```bash
-az login --identity --debug
-```
-
-## Adding New Secrets
-
-When you need a new secret:
-
-1. Add to Key Vault:
-```bash
-az keyvault secret set --vault-name kv-xxx --name NEW-SECRET --value "xxx"
-```
-
-2. Update fetch script (if needed):
-```bash
-export NEW_SECRET=$(az keyvault secret show --vault-name "$VAULT_NAME" --name NEW-SECRET --query value -o tsv)
-```
-
-3. Reference in code/config via environment variable
-
-## Backup
-
-Key Vault supports soft delete by default. Deleted secrets can be recovered for 7 days.
-
-For critical secrets, consider:
-- Backup via `az keyvault secret backup`
-- Cross-region replication
-- Documentation of secret purposes
+If any check fails, restore the last-known-good config and keep existing channel credentials/state intact while diagnosing.

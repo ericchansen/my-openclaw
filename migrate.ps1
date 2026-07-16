@@ -1,66 +1,94 @@
-# Migrate local OpenClaw data to Azure VM
-# Usage: .\migrate.ps1 -VmHost "azureuser@<VM_FQDN_OR_IP>"
-#
-# Transfers your config and workspace so the VM picks up where you left off.
-# Requires: ssh + scp available in PATH (OpenSSH client on Windows)
-
 param(
-    [Parameter(Mandatory=$true)]
+    [Parameter(Mandatory = $true)]
     [string]$VmHost,
 
-    [string]$ConfigDir = "F:\openclaw\config",
-    [string]$WorkspaceDir = "F:\openclaw\workspace",
-    [string]$SshKeyPath = "$HOME\.ssh\id_ed25519"
+    [string]$SshKeyPath = "$HOME\.ssh\id_ed25519",
+    [string]$KnownHostsFile = "$HOME\.ssh\known_hosts"
 )
 
 $ErrorActionPreference = "Stop"
-$sshArgs = @("-i", $SshKeyPath, "-o", "StrictHostKeyChecking=no")
 
-Write-Host "`n=== OpenClaw Migration to Azure VM ===" -ForegroundColor Cyan
+function Assert-SshHostKnown {
+    param([string]$Target)
 
-# Verify source directories exist
-if (-not (Test-Path $ConfigDir)) { Write-Error "Config dir not found: $ConfigDir"; exit 1 }
-if (-not (Test-Path $WorkspaceDir)) { Write-Error "Workspace dir not found: $WorkspaceDir"; exit 1 }
+    $hostName = ($Target -replace '^.*@', '').Trim('[', ']')
+    if (-not (Test-Path -LiteralPath $KnownHostsFile)) {
+        throw "Known hosts file not found: $KnownHostsFile"
+    }
+    & ssh-keygen -F $hostName -f $KnownHostsFile *> $null
+    if ($LASTEXITCODE -ne 0) {
+        throw "No verified host key for '$hostName' in $KnownHostsFile. Verify it out of band and add it before migration."
+    }
+}
 
-# 1. Create target directories on VM
-Write-Host "`n[1/5] Creating directories on VM..."
-ssh @sshArgs $VmHost "mkdir -p ~/.openclaw/workspace"
+foreach ($command in @("openclaw", "ssh", "scp", "ssh-keygen")) {
+    if (-not (Get-Command $command -ErrorAction SilentlyContinue)) {
+        throw "Required command not found: $command"
+    }
+}
+if (-not (Test-Path -LiteralPath $SshKeyPath)) {
+    throw "SSH key not found: $SshKeyPath"
+}
+Assert-SshHostKnown -Target $VmHost
+$sshArgs = @(
+    "-i", $SshKeyPath,
+    "-o", "StrictHostKeyChecking=yes",
+    "-o", "UserKnownHostsFile=$KnownHostsFile"
+)
 
-# 2. Transfer config (contains openclaw.json, credentials, agents, cron, etc.)
-Write-Host "`n[2/5] Uploading config directory..."
-scp @sshArgs -r "${ConfigDir}\*" "${VmHost}:~/.openclaw/"
+& openclaw backup create --help *> $null
+if ($LASTEXITCODE -ne 0) {
+    throw "This local OpenClaw version does not support official backup creation."
+}
 
-# 3. Transfer workspace (contains memory, identity docs, etc.)
-Write-Host "`n[3/5] Uploading workspace directory..."
-scp @sshArgs -r "${WorkspaceDir}\*" "${VmHost}:~/.openclaw/workspace/"
+$stageBase = if ($env:LOCALAPPDATA) {
+    $env:LOCALAPPDATA
+}
+else {
+    [System.IO.Path]::GetTempPath()
+}
+$stageRoot = Join-Path $stageBase "OpenClaw\migration-staging"
+$stage = Join-Path $stageRoot "$PID-$([guid]::NewGuid())"
+$remoteDir = ".cache/openclaw-migration/incoming"
+$restoreHelper = Join-Path $PSScriptRoot "scripts\migrate-restore.sh"
+if (-not (Test-Path -LiteralPath $restoreHelper)) {
+    throw "Migration restore helper not found: $restoreHelper"
+}
 
-# 4. Fix Docker paths in config
-Write-Host "`n[4/5] Fixing Docker paths in config..."
-ssh @sshArgs $VmHost "sed -i 's|/home/node|/home/`$(whoami)|g' ~/.openclaw/openclaw.json"
-ssh @sshArgs $VmHost "sed -i 's|/home/`$(whoami)/repos/openclaw|/home/`$(whoami)/.openclaw/workspace|g' ~/.openclaw/openclaw.json"
+try {
+    New-Item -ItemType Directory -Path $stage -Force | Out-Null
+    Write-Host "`n[1/5] Creating and verifying official OpenClaw backup..." -ForegroundColor Cyan
+    & openclaw backup create --output $stage --verify
+    if ($LASTEXITCODE -ne 0) { throw "OpenClaw backup creation failed." }
+    $archives = @(Get-ChildItem -LiteralPath $stage -File -Filter "*.tar.gz")
+    if ($archives.Count -ne 1) {
+        throw "Expected one backup archive, found $($archives.Count)."
+    }
+    & openclaw backup verify $archives[0].FullName
+    if ($LASTEXITCODE -ne 0) { throw "Local OpenClaw backup verification failed." }
 
-# 5. Verify transfer
-Write-Host "`n[5/5] Verifying transfer..."
-ssh @sshArgs $VmHost @"
-echo '--- Config files ---'
-ls -la ~/.openclaw/
-echo ''
-echo '--- Workspace files ---'
-ls -la ~/.openclaw/workspace/
-echo ''
-echo '--- openclaw.json ---'
-test -f ~/.openclaw/openclaw.json && echo 'Found' || echo 'MISSING'
-"@
+    Write-Host "[2/5] Creating private remote staging..." -ForegroundColor Cyan
+    & ssh @sshArgs $VmHost "install -d -m 0700 '$remoteDir'"
+    if ($LASTEXITCODE -ne 0) { throw "Remote staging creation failed." }
 
-Write-Host "`n=== Migration Complete ===" -ForegroundColor Green
-Write-Host "`nNext steps:" -ForegroundColor Yellow
-Write-Host "  1. SSH into the VM:  ssh $sshArgs $VmHost"
-Write-Host "  2. Set gateway token:  export OPENCLAW_GATEWAY_TOKEN='<your-token>'"
-Write-Host "  3. Set any other env vars (GITHUB_TOKEN, etc.) in ~/.bashrc"
-Write-Host "  4. Start the gateway:  sudo systemctl start openclaw-gateway"
-Write-Host "  5. Verify:  openclaw doctor"
-Write-Host ""
-Write-Host "  To add env vars to the systemd service permanently:" -ForegroundColor DarkYellow
-Write-Host "    sudo systemctl edit openclaw-gateway"
-Write-Host "    Add: Environment=OPENCLAW_GATEWAY_TOKEN=<your-token>"
-Write-Host "    Then: sudo systemctl restart openclaw-gateway"
+    Write-Host "[3/5] Uploading verified backup and restore helper..." -ForegroundColor Cyan
+    & scp @sshArgs $archives[0].FullName $restoreHelper "${VmHost}:$remoteDir/"
+    if ($LASTEXITCODE -ne 0) { throw "Backup upload failed." }
+
+    Write-Host "[4/5] Verifying remote archive and creating pre-restore backup..." -ForegroundColor Cyan
+    $remoteArchive = "$remoteDir/$($archives[0].Name)"
+    $remoteHelper = "$remoteDir/migrate-restore.sh"
+    $remoteCommand = "chmod 0700 '$remoteHelper' && '$remoteHelper' '$remoteArchive'"
+    & ssh @sshArgs $VmHost $remoteCommand
+    if ($LASTEXITCODE -eq 78) {
+        throw "Remote OpenClaw can verify backups but has no supported full-backup restore command. The verified archive remains at ~/$remoteArchive."
+    }
+    if ($LASTEXITCODE -ne 0) { throw "Remote restore failed." }
+
+    Write-Host "[5/5] Migration completed and gateway restarted." -ForegroundColor Green
+}
+finally {
+    if (Test-Path -LiteralPath $stage) {
+        Remove-Item -LiteralPath $stage -Recurse -Force
+    }
+}

@@ -3,6 +3,33 @@
     "headless": true,
     "noSandbox": true
   },
+  "secrets": {
+    "providers": {
+      "azure-key-vault": {
+        "source": "exec",
+        "command": "/usr/local/bin/openclaw-keyvault-resolver",
+        "args": [
+          "--vault-name",
+          "YOUR_KEY_VAULT_NAME"
+        ],
+        "timeoutMs": 10000,
+        "noOutputTimeoutMs": 5000,
+        "maxOutputBytes": 65536,
+        "jsonOnly": true,
+        "trustedDirs": [
+          "/usr/local/bin"
+        ]
+      }
+    },
+    "defaults": {
+      "exec": "azure-key-vault"
+    },
+    "resolution": {
+      "maxProviderConcurrency": 4,
+      "maxRefsPerProvider": 64,
+      "maxBatchBytes": 65536
+    }
+  },
   "auth": {
     "profiles": {
       "github-copilot:github": {
@@ -14,17 +41,76 @@
   "agents": {
     "defaults": {
       "model": {
-        "primary": "github-copilot/claude-opus-4.5"
+        "primary": "github-copilot/claude-sonnet-5",
+        "fallbacks": [
+          "github-copilot/gpt-5.6-sol"
+        ]
       },
+      "thinkingDefault": "high",
       "models": {
-        "github-copilot/claude-opus-4.5": {},
-        "github-copilot/claude-opus-4.6": {}
+        "github-copilot/claude-opus-4.6": {
+          "alias": "previous-primary-opus"
+        },
+        "github-copilot/claude-sonnet-4.6": {
+          "alias": "fallback-sonnet"
+        },
+        "github-copilot/gemini-2.5-pro": {
+          "alias": "fallback-gemini"
+        },
+        "github-copilot/claude-opus-4.8": {
+          "alias": "benchmark-opus-4-8"
+        },
+        "github-copilot/claude-sonnet-5": {
+          "alias": "primary-sonnet-5"
+        },
+        "github-copilot/gpt-5.6-sol": {
+          "alias": "fallback-gpt-5-6-sol"
+        }
       },
       "workspace": "/home/azureuser/.openclaw/workspace",
       "verboseDefault": "on",
       "maxConcurrent": 4,
+      "contextPruning": {
+        "mode": "cache-ttl",
+        "ttl": "1h",
+        "keepLastAssistants": 3,
+        "softTrimRatio": 0.3,
+        "hardClearRatio": 0.5,
+        "minPrunableToolChars": 50000
+      },
       "subagents": {
-        "maxConcurrent": 8
+        "delegationMode": "suggest",
+        "maxConcurrent": 4,
+        "maxSpawnDepth": 2,
+        "maxChildrenPerAgent": 3,
+        "model": "github-copilot/claude-sonnet-4.6",
+        "thinking": "medium",
+        "runTimeoutSeconds": 2700
+      },
+      "memorySearch": {
+        "provider": "github-copilot",
+        "model": "text-embedding-3-small",
+        "query": {
+          "hybrid": {
+            "enabled": true,
+            "vectorWeight": 0.7,
+            "textWeight": 0.3,
+            "candidateMultiplier": 4,
+            "mmr": {
+              "enabled": true,
+              "lambda": 0.7
+            },
+            "temporalDecay": {
+              "enabled": true,
+              "halfLifeDays": 30
+            }
+          }
+        },
+        "cache": {
+          "enabled": true,
+          "maxEntries": 50000
+        },
+        "enabled": true
       }
     },
     "list": [
@@ -39,13 +125,17 @@
       {
         "id": "orchestrator",
         "workspace": "/home/azureuser/.openclaw/workspace",
-        "model": "github-copilot/claude-sonnet-4",
+        "model": "github-copilot/claude-sonnet-4.6",
         "identity": {
           "name": "Orchestrator",
           "emoji": "🎯"
         }
       }
     ]
+  },
+  "memory": {
+    "backend": "builtin",
+    "citations": "auto"
   },
   "tools": {
     "profile": "coding",
@@ -56,9 +146,17 @@
     "web": {
       "search": {
         "enabled": true,
-        "provider": "brave",
-        "apiKey": "YOUR_BRAVE_API_KEY"
+        "provider": "brave"
       }
+    },
+    "experimental": {
+      "planTool": true
+    },
+    "toolSearch": {
+      "enabled": true,
+      "mode": "directory",
+      "searchDefaultLimit": 8,
+      "maxSearchLimit": 20
     },
     "sessions": {
       "visibility": "agent"
@@ -84,16 +182,26 @@
   "channels": {
     "telegram": {
       "dmPolicy": "allowlist",
-      "botToken": "YOUR_TELEGRAM_BOT_TOKEN",
+      "botToken": {
+        "source": "exec",
+        "provider": "azure-key-vault",
+        "id": "TELEGRAM-BOT-TOKEN"
+      },
       "allowFrom": [
         "YOUR_TELEGRAM_USER_ID"
       ],
       "groupPolicy": "disabled",
-      "streamMode": "partial"
+      "streaming": {
+        "mode": "partial"
+      }
     },
     "discord": {
       "enabled": true,
-      "token": "YOUR_DISCORD_BOT_TOKEN",
+      "token": {
+        "source": "exec",
+        "provider": "azure-key-vault",
+        "id": "DISCORD-BOT-TOKEN"
+      },
       "groupPolicy": "allowlist",
       "dmPolicy": "allowlist",
       "allowFrom": [
@@ -118,9 +226,7 @@
             "YOUR_AGENT_CHANNEL_ID": {
               "requireMention": false
             },
-            "*": {
-              "allow": true
-            }
+            "*": {}
           }
         }
       }
@@ -130,7 +236,11 @@
     "mode": "local",
     "auth": {
       "mode": "token",
-      "token": "YOUR_GATEWAY_TOKEN",
+      "token": {
+        "source": "exec",
+        "provider": "azure-key-vault",
+        "id": "OPENCLAW-GATEWAY-TOKEN"
+      },
       "allowTailscale": true
     },
     "tailscale": {
@@ -138,7 +248,27 @@
     }
   },
   "plugins": {
+    "allow": [
+      "brave",
+      "browser",
+      "discord",
+      "github-copilot",
+      "memory-core",
+      "telegram"
+    ],
     "entries": {
+      "brave": {
+        "enabled": true,
+        "config": {
+          "webSearch": {
+            "apiKey": {
+              "source": "exec",
+              "provider": "azure-key-vault",
+              "id": "BRAVE-API-KEY"
+            }
+          }
+        }
+      },
       "discord": {
         "enabled": true
       },
@@ -146,5 +276,17 @@
         "enabled": true
       }
     }
+  },
+  "diagnostics": {
+    "enabled": true,
+    "memoryPressureSnapshot": true
+  },
+  "logging": {
+    "level": "info",
+    "file": "/var/log/openclaw/openclaw.log",
+    "maxFileBytes": 104857600,
+    "consoleLevel": "info",
+    "consoleStyle": "compact",
+    "redactSensitive": "tools"
   }
 }

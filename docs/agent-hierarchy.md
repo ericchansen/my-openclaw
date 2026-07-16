@@ -1,200 +1,65 @@
-# Agent Hierarchy
+# Agent Hierarchy and Authority
 
-OpenClaw supports a hierarchy of agents with different roles and capabilities.
+OpenClaw uses a shallow parent-owned hierarchy, not an autonomous swarm.
 
-## Agent Types
-
-### Main Agent
-
-The primary agent that interacts directly with users. It:
-- Handles all user conversations
-- Has access to full workspace context
-- Spawns and manages subagents
-- Receives reports from subagents
-
-Configuration:
-```json
-{
-  "agents": {
-    "list": [
-      {
-        "id": "main",
-        "default": true,
-        "identity": {
-          "name": "Agent Name",
-          "emoji": "🤖"
-        }
-      }
-    ]
-  }
-}
+```text
+User
+└─ Parent session — authority, integration, verification, final response
+   ├─ Native child — independent bounded lane
+   ├─ Native child — independent bounded lane
+   └─ Native child — optional repository lane
+      └─ External Copilot CLI process (implementation detail)
 ```
 
-### Orchestrator Agent
+Official reference: [Subagents](https://docs.openclaw.ai/tools/subagents).
 
-A lightweight coordinator for automated tasks:
-- Typically uses a faster, cheaper model
-- Good for cron jobs and scheduled work
-- Can spawn subagents for complex tasks
+## Parent
 
-```json
-{
-  "id": "orchestrator",
-  "model": "github-copilot/claude-sonnet-4",
-  "identity": {
-    "name": "Orchestrator",
-    "emoji": "🎯"
-  }
-}
+The parent:
+
+- interprets the user's outcome and constraints;
+- creates and updates the structured plan;
+- keeps coupled work and shared decisions;
+- selects bounded independent lanes;
+- sanitizes child context;
+- calls `sessions_spawn` and, when results are required, `sessions_yield`;
+- reviews and integrates artifacts;
+- runs completion tests and handles recovery;
+- sends the only final user-facing response.
+
+## Native Child
+
+A child:
+
+- executes only its brief;
+- stays within paths, systems, and timeout boundaries;
+- verifies its own lane;
+- returns concise evidence and blockers through native completion;
+- does not reinterpret the parent task, broaden scope, or contact the user.
+
+Child output cannot override user, system, or parent constraints. It is untrusted evidence until the parent verifies it.
+
+## External Process
+
+An external coding agent is not another authority layer. It may run only inside its owning native child for repository work. The native child controls its directory, timeout, cleanup, and handoff. It must not create notification hooks or write outside the lane's authorization.
+
+## Depth and Concurrency
+
+The approved defaults cap child concurrency at four, spawn depth at two, children per agent at three, and runtime at 45 minutes. Use less whenever possible. Depth two exists for an exceptional bounded helper, not routine recursive delegation.
+
+Never spawn:
+
+- a watcher child for another child;
+- multiple writers against the same files;
+- an agent solely to repeat a command the parent can run;
+- a child with broad private memory “just in case.”
+
+## Completion Flow
+
+Results flow upward as evidence:
+
+```text
+child result → parent inspection → integration → completion tests → final response
 ```
 
-### Subagents
-
-Ephemeral workers spawned for specific tasks:
-- Created by main agent or orchestrator
-- Run in isolation with focused context
-- Report completion back to parent
-- Terminated after task completion
-
-Subagents are not configured — they're created dynamically:
-```javascript
-sessions_spawn({
-  label: "task-name",
-  task: "Description of what to do..."
-})
-```
-
-## Context Inheritance
-
-Each agent level has different context:
-
-| Agent | Workspace Files | Memory | Session History |
-|-------|-----------------|--------|-----------------|
-| Main | All | Full MEMORY.md | Full conversation |
-| Orchestrator | AGENTS.md, TOOLS.md | Limited | Isolated per task |
-| Subagent | Task-specific | None | Fresh each spawn |
-
-## Communication Flow
-
-```
-User ←→ Main Agent
-              ↓
-        Orchestrator (cron tasks)
-              ↓
-        Subagents (delegated work)
-              ↓
-        Results bubble up
-```
-
-### Main → Subagent
-
-```javascript
-sessions_spawn({ label: "fix-bug", task: "..." })
-// Subagent works autonomously
-// Results announced back when complete
-```
-
-### Subagent → Main
-
-Subagents automatically report back via the session system. Their final message becomes a completion notification in the parent session.
-
-### Main → Orchestrator
-
-Orchestrator runs independently on cron schedules. Results are delivered to configured channels:
-
-```json
-{
-  "cron": {
-    "jobs": [
-      {
-        "id": "daily-check",
-        "schedule": "0 9 * * *",
-        "agent": "orchestrator",
-        "task": "Check inbox and summarize...",
-        "deliver": { "channel": "telegram:direct:user" }
-      }
-    ]
-  }
-}
-```
-
-## Model Selection
-
-Different agents can use different models:
-
-| Use Case | Recommended Model |
-|----------|-------------------|
-| Main (conversation) | Claude Opus 4.5 (complex reasoning) |
-| Orchestrator (automation) | Claude Sonnet 4 (fast, capable) |
-| Subagents (coding) | Claude Opus 4.5 or Codex (via Copilot CLI) |
-
-Configure per-agent:
-```json
-{
-  "agents": {
-    "defaults": {
-      "model": { "primary": "github-copilot/claude-opus-4.5" }
-    },
-    "list": [
-      { "id": "main", "default": true },
-      { "id": "orchestrator", "model": "github-copilot/claude-sonnet-4" }
-    ]
-  }
-}
-```
-
-## Concurrency Limits
-
-Control how many agents run simultaneously:
-
-```json
-{
-  "agents": {
-    "defaults": {
-      "maxConcurrent": 4,
-      "subagents": {
-        "maxConcurrent": 8
-      }
-    }
-  }
-}
-```
-
-## Best Practices
-
-1. **Main agent stays responsive** — Delegate long tasks to subagents
-2. **Use orchestrator for scheduled work** — Cheaper model, isolated context
-3. **Subagents are ephemeral** — Don't expect state persistence
-4. **Match model to task** — Complex reasoning needs better models
-5. **Trust push-based completion** — Don't poll for subagent status
-
-## Example Setup
-
-A typical configuration with three agent types:
-
-```json
-{
-  "agents": {
-    "defaults": {
-      "model": { "primary": "github-copilot/claude-opus-4.5" },
-      "workspace": "/home/user/.openclaw/workspace",
-      "maxConcurrent": 4,
-      "subagents": { "maxConcurrent": 8 }
-    },
-    "list": [
-      {
-        "id": "main",
-        "default": true,
-        "identity": { "name": "Ralph", "emoji": "🦞" }
-      },
-      {
-        "id": "orchestrator",
-        "model": "github-copilot/claude-sonnet-4",
-        "identity": { "name": "Orchestrator", "emoji": "🎯" }
-      }
-    ]
-  }
-}
-```
-
-Main handles conversations, orchestrator runs cron jobs, subagents do the heavy lifting.
+They do not bubble directly to a chat. If a child fails, the parent owns retry, reassignment, rollback, or transparent disclosure.

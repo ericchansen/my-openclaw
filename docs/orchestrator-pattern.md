@@ -1,196 +1,72 @@
-# Orchestrator Pattern
+# Parent-Owned Orchestration
 
-The orchestrator pattern enables the main agent to delegate complex, long-running tasks to subagents while remaining responsive to user conversations.
+Use OpenClaw's native subagent lifecycle for parallel work. The parent owns the request, integrated state, verification, recovery, and final response.
 
-## Why Orchestrate?
+Official reference: [Subagents](https://docs.openclaw.ai/tools/subagents).
 
-- **Main session stays free** — Your human can keep chatting while work happens in the background
-- **Parallel execution** — Multiple coding tasks can run simultaneously
-- **Fault isolation** — If a subagent fails, it doesn't crash the main session
-- **Better context** — Each subagent gets focused context for its specific task
+## Lifecycle
 
-## Basic Pattern
+1. Define the outcome, constraints, and completion tests.
+2. Keep coupled decisions and shared-state edits in the parent.
+3. Split only independent, bounded lanes.
+4. Spawn each lane with `sessions_spawn`.
+5. Continue useful parent work. When required children are outstanding, call `sessions_yield`.
+6. Review child reports as evidence.
+7. Inspect and integrate actual artifacts, run completion tests, and recover failures.
+8. Send one final response from the parent.
 
-```
-User: "Fix the auth bug and add tests"
-↓
-Main Agent: Spawns subagent with specific task
-↓
-Subagent: Works autonomously (uses Copilot CLI, etc.)
-↓
-Subagent: Reports completion back
-↓
-Main Agent: Relays results to user
-```
+`sessions_spawn` is non-blocking. `sessions_yield` is the deliberate handoff point that lets required child completions return natively. Do not replace it with transcript/status polling, shell watchers, sleep loops, or a child that watches another child.
 
-## Spawning Subagents
+## Good Spawn Brief
 
-Use `sessions_spawn` to create focused workers:
+Every brief should contain:
 
-```javascript
-sessions_spawn({
-  label: "auth-fix",
-  task: `
-    Fix the authentication bug in src/auth.ts.
-    
-    Setup:
-    - Repo: ~/repos/my-app
-    - Use Copilot CLI in yolo mode
-    
-    When done, commit with message "fix: auth validation" and report back.
-  `
-})
-```
+- one objective and observable output;
+- allowed paths/systems and prohibited actions;
+- facts already established;
+- required tests and evidence;
+- timeout/stopping condition;
+- concise return format;
+- explicit prohibition on user/channel notification.
 
-### Key Parameters
+Prefer isolated context. Use forked context only when the child needs the current transcript and all inherited material is safe to disclose.
 
-| Parameter | Purpose |
-|-----------|---------|
-| `label` | Identifier for the subagent (shows in status) |
-| `task` | Detailed instructions — be specific! |
-| `model` | Override model (optional) |
-| `thinking` | Enable reasoning for complex tasks |
+## Bounded Topology
 
-## Best Practices
+The template uses:
 
-### 1. Be Explicit in Task Descriptions
+- parent concurrency: 4;
+- child model: Sonnet 4.6, medium thinking;
+- delegation mode: suggest;
+- child concurrency: 4;
+- maximum spawn depth: 2;
+- maximum children per agent: 3;
+- run timeout: 2,700 seconds.
 
-Bad:
-```
-"Fix the bug"
-```
+These are upper bounds, not targets. A single parent often needs zero or one child. Avoid fan-out where the merge cost exceeds the parallel gain.
 
-Good:
-```
-"Fix the authentication timeout bug in src/auth/session.ts.
-The issue: sessions expire after 1 hour instead of 24 hours.
-Look at the SESSION_TTL constant and the refreshToken function.
-Commit when fixed."
-```
+## Repository Lane
 
-### 2. Include Setup Instructions
+For substantial code changes, the parent may create one native child that launches external Copilot CLI. That child owns the external process and reports through native completion. Copilot/tmux is never the top-level orchestration system, never contacts the user, and never decides completion. See `workspace/skills/copilot-cli/SKILL.md`.
 
-```
-Setup:
-- Socket: /tmp/copilot-agents.sock
-- Session: auth-fix
-- Repo: ~/repos/my-app
+## Evidence and Recovery
 
-Use Copilot CLI in yolo mode.
-```
+A child report does not establish that:
 
-### 3. Define Completion Criteria
+- its edits are in the intended worktree;
+- concurrent changes were preserved;
+- tests cover the requested behavior;
+- a successful request represents a working user experience;
+- no secret or personal data entered the diff.
 
-```
-When complete:
-1. Run tests to verify the fix
-2. Commit with conventional commit message
-3. Report what changed and test results
-```
+The parent checks those conditions. On timeout or failure, preserve useful artifacts, narrow and retry once when justified, or finish in the parent. Report a blocker only after safe recovery paths are exhausted.
 
-### 4. Don't Micromanage
+## Anti-Patterns
 
-The subagent has full context and tools. Let it work. Only intervene if:
-- It's been stuck for >10 minutes
-- It asks a question you can answer
-- It's clearly going down the wrong path
-
-## Monitoring
-
-Check subagent status:
-```
-subagents({ action: "list" })
-```
-
-Steer a running subagent:
-```
-subagents({
-  action: "steer",
-  target: "auth-fix",
-  message: "Also check the token refresh logic"
-})
-```
-
-Kill a stuck subagent:
-```
-subagents({
-  action: "kill",
-  target: "auth-fix"
-})
-```
-
-## Push-Based Completion
-
-Subagents automatically announce completion back to their parent. You don't need to poll. Just spawn and wait — results will arrive.
-
-## Multi-Agent Example
-
-Parallel work on multiple tasks:
-
-```javascript
-// Spawn three workers simultaneously
-sessions_spawn({ label: "api-tests", task: "Add API integration tests..." })
-sessions_spawn({ label: "docs-update", task: "Update README with new API..." })
-sessions_spawn({ label: "bug-fix", task: "Fix the pagination bug..." })
-
-// Results will arrive as each completes
-// Main session stays responsive for conversation
-```
-
-## When NOT to Orchestrate
-
-- **Quick questions** — Just answer directly
-- **Simple file edits** — Faster to do inline
-- **Interactive debugging** — Needs human collaboration
-- **Sensitive operations** — Keep in main session for oversight
-
-## Common Patterns
-
-### Code Review
-
-```javascript
-sessions_spawn({
-  label: "review-pr",
-  task: `
-    Review PR #42 in ~/repos/my-app.
-    Focus on: security, performance, code style.
-    Post review comments as a summary.
-  `
-})
-```
-
-### Batch Processing
-
-```javascript
-// Process multiple repos
-for (const repo of ["app-1", "app-2", "app-3"]) {
-  sessions_spawn({
-    label: `update-${repo}`,
-    task: `Update dependencies in ~/repos/${repo} and run tests.`
-  })
-}
-```
-
-### Research + Implementation
-
-```javascript
-// First: research
-sessions_spawn({
-  label: "research",
-  task: "Research OAuth2 PKCE flow best practices. Write findings to /tmp/oauth-research.md"
-})
-
-// After research completes, spawn implementation
-sessions_spawn({
-  label: "implement",
-  task: "Implement OAuth2 PKCE based on /tmp/oauth-research.md in ~/repos/my-app"
-})
-```
-
-## Tips
-
-1. **Label descriptively** — You'll need to identify subagents later
-2. **One task per subagent** — Don't bundle unrelated work
-3. **Provide context paths** — Absolute paths to repos, files, etc.
-4. **Set expectations** — Tell subagent what "done" looks like
-5. **Trust the process** — Subagents report back automatically
+- delegating one coupled change to several writers;
+- recursively spawning to “speed up” simple work;
+- forwarding raw child output;
+- allowing a child to send Telegram/Discord/email;
+- polling `sessions_list`, transcripts, tmux panes, or process state;
+- marking the plan complete before integrated validation;
+- making the child's timeout unbounded.

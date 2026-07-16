@@ -1,9 +1,9 @@
 # HEARTBEAT.md
 
-# Keep this file empty (or with only comments) to skip heartbeat API calls.
+Keep only a few useful, context-aware checks here. If nothing requires attention, reply `HEARTBEAT_OK`.
 
-# Add tasks below when you want the agent to check something periodically.
-# Examples:
-# - Check inbox for urgent emails
-# - Review calendar for upcoming events
-# - Check weather if user might go out
+- Review urgent failures or deadlines since the last check.
+- Check active commitments for a real blocker or material state change.
+- Alert only when the user can act or should know now.
+
+Do not duplicate cron jobs, poll child sessions, or perform exact-time work here. Never include secrets or private message content in alerts.

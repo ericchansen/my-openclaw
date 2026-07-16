@@ -1,229 +1,88 @@
-# Cron Patterns
+# Cron and Scheduled Work
 
-OpenClaw supports cron-based scheduling for automated tasks. Use cron for precise timing and isolated execution.
+Manage schedules with the OpenClaw cron CLI, not an `openclaw.json` jobs array. Tasks are execution records, not a scheduler.
 
-## When to Use Cron vs Heartbeat
+Official references: [Cron jobs](https://docs.openclaw.ai/automation/cron-jobs) and [CLI cron](https://docs.openclaw.ai/cli/cron).
 
-| Use Cron | Use Heartbeat |
-|----------|---------------|
-| Exact timing required | Timing can drift |
-| Task needs isolation | Tasks can batch together |
-| Different model needed | Same model as main |
-| Direct channel delivery | Conversational context needed |
-| One-shot reminders | Periodic checks |
-
-## Basic Configuration
-
-```json
-{
-  "cron": {
-    "jobs": [
-      {
-        "id": "morning-briefing",
-        "schedule": "0 9 * * *",
-        "agent": "orchestrator",
-        "task": "Check calendar, weather, and inbox. Summarize the day ahead.",
-        "deliver": {
-          "channel": "telegram:direct:user"
-        }
-      }
-    ]
-  }
-}
-```
-
-## Cron Schedule Format
-
-Standard cron syntax: `minute hour day month weekday`
-
-| Field | Values |
-|-------|--------|
-| Minute | 0-59 |
-| Hour | 0-23 |
-| Day of Month | 1-31 |
-| Month | 1-12 |
-| Day of Week | 0-6 (0 = Sunday) |
-
-### Examples
-
-| Schedule | Meaning |
-|----------|---------|
-| `0 9 * * *` | 9:00 AM daily |
-| `0 9 * * 1-5` | 9:00 AM weekdays |
-| `*/30 * * * *` | Every 30 minutes |
-| `0 */4 * * *` | Every 4 hours |
-| `0 9 1 * *` | 9:00 AM on the 1st of each month |
-| `0 18 * * 5` | 6:00 PM every Friday |
-
-## Job Configuration
-
-### Required Fields
-
-```json
-{
-  "id": "unique-job-id",
-  "schedule": "0 9 * * *",
-  "task": "What the agent should do"
-}
-```
-
-### Optional Fields
-
-```json
-{
-  "id": "complex-job",
-  "schedule": "0 9 * * 1-5",
-  "agent": "orchestrator",
-  "model": "github-copilot/claude-sonnet-4",
-  "thinking": "low",
-  "task": "Analyze weekly metrics and prepare summary",
-  "deliver": {
-    "channel": "discord:channel:123456789"
-  },
-  "enabled": true
-}
-```
-
-| Field | Purpose | Default |
-|-------|---------|---------|
-| `agent` | Which agent runs the job | `"main"` |
-| `model` | Override model for this job | Agent's default |
-| `thinking` | Enable reasoning | `"off"` |
-| `deliver` | Where to send output | Agent's default channel |
-| `enabled` | Toggle job on/off | `true` |
-
-## Delivery Channels
-
-Specify where cron output goes:
-
-```json
-"deliver": {
-  "channel": "telegram:direct:user"
-}
-```
-
-Channel formats:
-- `telegram:direct:USER_ID`
-- `discord:channel:CHANNEL_ID`
-- `discord:dm:USER_ID`
-
-## Common Patterns
-
-### Morning Briefing
-
-```json
-{
-  "id": "morning-briefing",
-  "schedule": "0 8 * * 1-5",
-  "agent": "orchestrator",
-  "task": "Good morning! Check: 1) Today's calendar events, 2) Weather forecast, 3) Unread important emails. Keep it brief.",
-  "deliver": { "channel": "telegram:direct:user" }
-}
-```
-
-### Weekly Review
-
-```json
-{
-  "id": "weekly-review",
-  "schedule": "0 17 * * 5",
-  "agent": "orchestrator",
-  "thinking": "low",
-  "task": "Review this week's memory files. What got done? What's pending? Prepare a brief summary.",
-  "deliver": { "channel": "telegram:direct:user" }
-}
-```
-
-### One-Shot Reminder
-
-Created dynamically via command:
-```
-/remind in 20 minutes to check the deployment
-```
-
-Generates:
-```json
-{
-  "id": "reminder-abc123",
-  "schedule": "25 14 18 2 *",
-  "task": "Reminder: check the deployment",
-  "once": true
-}
-```
-
-### Repository Monitoring
-
-```json
-{
-  "id": "repo-check",
-  "schedule": "0 */6 * * *",
-  "agent": "orchestrator",
-  "task": "Check ~/repos/my-app for: 1) Uncommitted changes, 2) Unpushed commits, 3) Failed CI. Report only if issues found.",
-  "deliver": { "channel": "discord:channel:123456789" }
-}
-```
-
-### Backup Reminder
-
-```json
-{
-  "id": "backup-reminder",
-  "schedule": "0 20 * * 0",
-  "task": "Weekly backup reminder: Have you backed up your important files this week?",
-  "deliver": { "channel": "telegram:direct:user" }
-}
-```
-
-## Managing Jobs
-
-### List Jobs
+## Inspect Before Changing
 
 ```bash
 openclaw cron list
+openclaw cron show <job-id>
+openclaw cron runs --id <job-id>
 ```
 
-### Add Job
+Use `openclaw cron create --help` and `openclaw cron edit --help` from the installed version before composing a production command. Do not recreate existing Telegram, Discord, Gmail, or operational jobs during a config migration.
+
+## Choose the Smallest Job Type
+
+### Deterministic command
+
+Prefer command jobs for scripts or CLIs with fixed inputs and outputs:
+
+- exact executable and argv; no shell interpolation when avoidable;
+- dedicated service identity and least privilege;
+- bounded runtime and output;
+- idempotency or a run key;
+- explicit success criterion;
+- failure alert and tested destination.
+
+Never place secret values in command arguments, job names, prompts, or delivery text. Resolve them at execution through the approved SecretRef/managed-identity path.
+
+### Isolated agent
+
+Use an isolated agent only when interpretation or synthesis is necessary:
+
+- use `--light-context`;
+- set model, fallback sequence, and thinking explicitly;
+- provide one bounded prompt and completion criterion;
+- set a timeout below the scheduler's maximum;
+- deliver only the synthesized result;
+- configure failure alerts.
+
+Do not use cron to create an unbounded orchestration session. The scheduled parent still owns any native children and must use `sessions_yield`, verify their evidence, and synthesize the delivery.
+
+## Example Creation Workflow
+
+Flags can evolve; confirm them against installed `2026.7.1` help:
 
 ```bash
-openclaw cron add --id daily-check --schedule "0 9 * * *" --task "Check inbox"
+openclaw cron create --help
+openclaw cron create \
+  --name "weekly-quality-report" \
+  --cron "0 9 * * 1" \
+  --tz "UTC" \
+  --session isolated \
+  --light-context \
+  --model "github-copilot/claude-opus-4.6" \
+  --fallbacks "github-copilot/claude-sonnet-4.6,github-copilot/gemini-2.5-pro" \
+  --thinking "high" \
+  --timeout-seconds 900 \
+  --announce \
+  --channel telegram \
+  --to "<approved-destination>" \
+  --message "<bounded report prompt>"
+
+openclaw cron edit <job-id> \
+  --failure-alert \
+  --failure-alert-after 1 \
+  --failure-alert-cooldown "6h" \
+  --failure-alert-channel telegram \
+  --failure-alert-to "<approved-destination>"
 ```
 
-### Remove Job
+`cron create` does not accept failure-alert flags in 2026.7.1, so configure them with `cron edit` after capturing the new job ID. Use `openclaw cron run <job-id>` for a controlled test, then inspect `openclaw cron runs --id <job-id>`. Prefer editing an existing job to delete/recreate so run history and identity remain clear.
 
-```bash
-openclaw cron remove daily-check
-```
+## Reliability Checklist
 
-### Disable/Enable
+- timezone and daylight-saving behavior are explicit;
+- overlapping runs are prevented or safe;
+- timeout leaves time for cleanup and alerting;
+- model fallback is observable in the result/log;
+- delivery failure is distinct from work failure;
+- skipped-run and repeated-failure behavior is configured;
+- alert destination was tested without sensitive content;
+- job can be retried safely;
+- ownership and rollback are documented.
 
-```bash
-openclaw cron disable daily-check
-openclaw cron enable daily-check
-```
-
-## Tips
-
-1. **Use orchestrator for cron** — Cheaper model, isolated context
-2. **Be specific in tasks** — Cron jobs don't have conversation history
-3. **Set appropriate delivery** — Know where output goes
-4. **Test with short intervals** — Debug with `*/5 * * * *` before production
-5. **Use `once: true` for reminders** — Auto-cleanup after execution
-6. **Batch periodic checks in heartbeat** — Don't create many small cron jobs
-7. **Consider timezone** — Server runs in UTC by default
-
-## Debugging
-
-Check cron execution logs:
-```bash
-journalctl -u openclaw-gateway -f | grep cron
-```
-
-Verify job is registered:
-```bash
-openclaw cron list --verbose
-```
-
-Test job manually:
-```bash
-openclaw cron run daily-check
-```
+Use a heartbeat only for a few batched, context-aware checks that tolerate drift. Use cron for exact timing and isolated execution.

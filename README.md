@@ -1,201 +1,157 @@
-# My OpenClaw Setup
+# OpenClaw on Azure
 
-Personal OpenClaw configuration and operational patterns — Azure VM deployment with Key Vault, Tailscale, and systemd.
+Reproducible Azure VM deployment and operating model for a private OpenClaw gateway with Telegram, Discord, Azure Key Vault, Tailscale, verified Blob backups, and Azure Monitor.
 
-## What's Here
+## Design
 
-This repo contains:
-- **Azure VM deployment** — Bicep templates for VM + Key Vault + Tailscale
-- **Workspace templates** — Agent configuration files ready to customize
-- **Operational docs** — Patterns for agent orchestration, cron, and more
+- Ubuntu 24.04 ARM64 VM with a 64 GiB Standard SSD OS disk and a system-assigned managed identity
+- OpenClaw gateway under systemd, bound to loopback and exposed through Tailscale Serve
+- Azure Key Vault exec SecretRefs instead of plaintext config or broad environment injection
+- Private Azure Blob container with managed-identity uploads
+- Daily verified backups retained for 35 days and monthly backups retained for 12 months
+- Structured local health checks collected by Azure Monitor/Log Analytics
+- Parent-owned native OpenClaw orchestration for complex requests
+- Builtin hybrid memory search using GitHub Copilot embeddings over curated private files
+- Claude Sonnet 5 with high reasoning as primary and GPT-5.6 Sol as fallback
 
-## Directory Structure
+Telegram and Discord configuration is an overlay on the live VM. Deployment automation never runs onboarding or replaces a working channel configuration wholesale.
 
-```
-my-openclaw/
-├── config/
-│   ├── openclaw.template.json    # Full config template (copy + customize)
-│   └── openclaw-gateway.service  # Production systemd service
-├── workspace/
-│   ├── AGENTS.md                 # Agent instructions (use as-is)
-│   ├── SOUL.template.md          # Agent personality (customize)
-│   ├── USER.template.md          # Your info (customize)
-│   ├── IDENTITY.template.md      # Agent identity (customize)
-│   ├── HEARTBEAT.template.md     # Periodic checks (customize)
-│   ├── TOOLS.template.md         # Local tool notes (customize)
-│   └── skills/
-│       └── copilot-cli/          # Copilot CLI orchestration skill
-├── docs/
-│   ├── orchestrator-pattern.md   # Subagent delegation patterns
-│   ├── agent-hierarchy.md        # Main/orchestrator/subagent roles
-│   ├── cron-patterns.md          # Scheduled task patterns
-│   ├── keyvault-integration.md   # Azure Key Vault usage
-│   └── todo-conventions.md       # Task tracking guidelines
-├── infra/
-│   ├── main.bicep                # Azure resources (VM, Key Vault, VNet)
-│   ├── main-subscription.bicep   # Subscription-scoped RBAC + budget
-│   ├── budget.bicep              # Monthly budget with email alerts
-│   ├── main.bicepparam           # Deployment parameters
-│   └── cloud-init.yaml           # VM bootstrap (Node, Tailscale, OpenClaw)
-├── azure.yaml                    # azd project manifest
-├── deploy.ps1                    # Azure deployment script
-└── migrate.ps1                   # Docker → VM migration
-```
+## Repository
 
-## Fork & Customize
+| Path | Purpose |
+|---|---|
+| `infra/` | VM, identity, Key Vault, backup storage, monitoring, budget, and RBAC |
+| `config/` | OpenClaw template and canonical systemd units |
+| `scripts/` | Idempotent runtime install/apply, backup, restore verification, and health checks |
+| `workspace/` | Concise agent contract and Copilot repository-lane skill |
+| `docs/` | SecretRef, cron, orchestration, memory, benchmark, backup, and operations runbooks |
+| `deploy.ps1` | Canonical Azure validation/what-if/deployment entry point |
+| `migrate.ps1` | Verified backup-based migration that fails closed when restore is unsupported |
 
-This repo is meant to be forked and personalized. Here's how:
+## Prerequisites
 
-### 1. Fork the Repository
+- Azure CLI authenticated to the target subscription
+- Azure Bicep CLI (`az bicep version`)
+- PowerShell 7
+- OpenSSH client and a verified host key for existing-VM updates
+- An SSH public key
 
-```bash
-# Fork on GitHub, then clone your fork
-git clone https://github.com/YOUR_USERNAME/my-openclaw.git
-cd my-openclaw
-```
+Do not pass bot tokens, PATs, or API keys to deployment scripts. Put credential values in Key Vault through an approved value-safe process, then map supported fields to SecretRefs.
 
-### 2. Create Your Config
+## Deploy Azure Resources
 
-```bash
-# Copy the template
-cp config/openclaw.template.json ~/.openclaw/openclaw.json
+`deploy.ps1` is the canonical entry point. It validates and previews each resource-group or subscription deployment before applying that scope.
+For a new VM, it resolves the signed-in Azure principal and grants that principal Key Vault Administrator so required secrets can be seeded; pass `-DeployerPrincipalId` when automatic resolution is unavailable. Existing-VM mode does not add that role unless explicitly requested.
+Remove the deployer assignment after secrets are seeded and SecretRefs are verified unless ongoing Key Vault administration is intentional.
 
-# Edit with your values:
-# - Bot tokens (Telegram, Discord)
-# - Gateway token
-# - User IDs for allowlists
-# - Agent identity
-```
-
-### 3. Set Up Your Workspace
-
-```bash
-mkdir -p ~/.openclaw/workspace
-
-# Copy AGENTS.md as-is (it's ready to use)
-cp workspace/AGENTS.md ~/.openclaw/workspace/
-
-# Copy and customize the templates
-cp workspace/SOUL.template.md ~/.openclaw/workspace/SOUL.md
-cp workspace/USER.template.md ~/.openclaw/workspace/USER.md
-cp workspace/IDENTITY.template.md ~/.openclaw/workspace/IDENTITY.md
-cp workspace/HEARTBEAT.template.md ~/.openclaw/workspace/HEARTBEAT.md
-cp workspace/TOOLS.template.md ~/.openclaw/workspace/TOOLS.md
-
-# Copy skills
-cp -r workspace/skills ~/.openclaw/workspace/
-```
-
-### 4. Edit Your Files
-
-- **SOUL.md** — Agent personality and values
-- **USER.md** — Your name, timezone, preferences
-- **IDENTITY.md** — Agent name, emoji, accounts
-- **TOOLS.md** — Local infrastructure notes
-
-### 5. Store Secrets Securely
-
-Never commit secrets. Use:
-- **Azure Key Vault** (for VM deployments)
-- **Environment variables** (for local setups)
-- **`.env` files** (gitignored)
-
-## Azure VM Deployment
-
-### Prerequisites
-
-- Azure CLI (`az`) logged in
-- SSH key pair (`~/.ssh/id_ed25519`)
-
-### Deploy with azd
-
-```bash
-azd up
-```
-
-### Deploy with Script
+New VM:
 
 ```powershell
-.\deploy.ps1 -SshPublicKeyPath "~\.ssh\id_ed25519.pub"
+.\deploy.ps1 `
+  -SshPublicKeyPath "$HOME\.ssh\id_ed25519.pub" `
+  -MonitoringContactEmails "you@example.com"
 ```
 
-### Post-Deployment
+Existing VM infrastructure update:
+
+```powershell
+.\deploy.ps1 `
+  -SshPublicKeyPath "$HOME\.ssh\id_ed25519.pub" `
+  -VerifiedSnapshotId "<managed-disk-snapshot-resource-id>" `
+  -MonitoringContactEmails "you@example.com" `
+  -SkipCustomData
+```
+
+Review the complete what-if. Stop if Azure proposes replacing the VM, OS disk, NIC, VNet, public IP, or Key Vault.
+Interactive runs require separate confirmation after each scope's what-if. The script detects an existing `openclaw-vm` automatically and will not deploy until given a succeeded snapshot of its current OS disk. Existing-VM mode preserves the image version, VM size, and disk size already recorded in Azure and references the existing NSG without redeploying its rules.
+
+`azure.yaml` describes the Bicep project for Azure Developer CLI discovery, but it does not replace the guarded deployment workflow above.
+
+## Apply Runtime Assets to an Existing VM
+
+After the infrastructure deployment outputs the Key Vault and storage names:
+
+```powershell
+.\scripts\apply-runtime.ps1 `
+  -VmHost "azureuser@<vm-fqdn>" `
+  -ResourceGroupName "rg-openclaw" `
+  -VerifiedSnapshotId "<managed-disk-snapshot-resource-id>" `
+  -KeyVaultName "<vault-name>" `
+  -StorageAccountName "<storage-account>"
+```
+
+The script requires an existing verified SSH host key and rejects an SSH target whose Azure IMDS resource ID does not match the snapshotted VM. The installer:
+
+- installs tested runtime versions;
+- installs canonical gateway/backup/health units and scripts;
+- validates an active OpenClaw config before restarting the gateway;
+- prevents `needrestart` from restarting unrelated host services during package maintenance;
+- merges bounded Docker logging defaults without restarting Docker;
+- starts backup and health timers;
+- never onboards or rewrites channels.
+
+Apply Docker daemon changes only during an operator-controlled window, then recreate only OpenClaw-owned containers. Do not stop unrelated projects.
+
+## Configure OpenClaw
+
+`config/openclaw.template.json` is a schema-validated reference, not a replacement for a live config.
+
+For an existing deployment:
+
+1. Create and verify a backup.
+2. Install the Key Vault resolver.
+3. Add the exec provider and credential references through the OpenClaw secrets workflow.
+4. Apply only the non-secret quality patch paths needed for pruning, planning, Tool Search, subagents, hybrid memory, trusted plugin allowlisting, diagnostics, and logging.
+5. Validate before restart.
+6. Compare sanitized before/after channel and cron structures.
+7. Exercise Telegram, Discord, Gmail, model, cron, and native task handoff through their existing identities.
+
+Never rerun onboarding to apply this repository.
+
+See [Key Vault SecretRefs](docs/keyvault-integration.md), [Operations](docs/operations.md), and [Backup and restore](docs/backup-restore.md).
+
+## Workspace
+
+Copy generic templates only when creating a new workspace:
 
 ```bash
-# SSH in (port forwards gateway)
-ssh openclaw
-
-# Wait for cloud-init
-cloud-init status --wait
-
-# Join Tailscale
-sudo tailscale up
-
-# Load secrets from Key Vault
-source openclaw-fetch-secrets <vault-name>
-
-# Start gateway
-sudo systemctl start openclaw-gateway
+install -m 0644 workspace/AGENTS.md ~/.openclaw/workspace/AGENTS.md
+install -m 0644 workspace/SOUL.template.md ~/.openclaw/workspace/SOUL.md
+install -m 0644 workspace/USER.template.md ~/.openclaw/workspace/USER.md
+install -m 0644 workspace/IDENTITY.template.md ~/.openclaw/workspace/IDENTITY.md
+install -m 0644 workspace/HEARTBEAT.template.md ~/.openclaw/workspace/HEARTBEAT.md
+install -m 0644 workspace/TOOLS.template.md ~/.openclaw/workspace/TOOLS.md
 ```
 
-### SSH Config
+Do not overwrite a live private `MEMORY.md`, `USER.md`, topic memory, daily notes, skills, or channel-specific instructions. Curate those in place according to [Memory curation](docs/memory-curation.md).
 
-Add to `~/.ssh/config`:
-
-```
-Host openclaw
-    HostName <VM_FQDN>
-    User azureuser
-    IdentityFile ~/.ssh/id_ed25519
-    LocalForward 18789 127.0.0.1:18789
-```
-
-## Key Vault Secrets
-
-Store these in Azure Key Vault:
-
-| Secret | Purpose |
-|--------|---------|
-| `OPENCLAW-GATEWAY-TOKEN` | Gateway auth |
-| `GITHUB-TOKEN` | Repo access |
-| `TELEGRAM-BOT-TOKEN` | Telegram bot |
-| `DISCORD-BOT-TOKEN` | Discord bot |
+## Routine Checks
 
 ```bash
-az keyvault secret set --vault-name <vault> --name GITHUB-TOKEN --value "ghp_xxx"
+curl --fail http://127.0.0.1:18789/health
+openclaw config validate
+openclaw doctor --lint --json
+openclaw channels status --probe --json
+openclaw security audit --json
+openclaw secrets audit --allow-exec --check --json
+openclaw tasks audit --json
+systemctl status openclaw-gateway openclaw-backup.timer openclaw-health.timer
 ```
+
+Monitor `/health`, not a model-backed completion endpoint.
 
 ## Documentation
 
-See the `docs/` folder for operational patterns:
+- [Operations and rollback](docs/operations.md)
+- [Backup and restore](docs/backup-restore.md)
+- [Azure Key Vault SecretRefs](docs/keyvault-integration.md)
+- [Native orchestration](docs/orchestrator-pattern.md)
+- [Agent hierarchy](docs/agent-hierarchy.md)
+- [Cron patterns](docs/cron-patterns.md)
+- [TODO and task conventions](docs/todo-conventions.md)
+- [Memory curation](docs/memory-curation.md)
+- [Private quality benchmark](docs/quality-benchmark.md)
 
-- **[Orchestrator Pattern](docs/orchestrator-pattern.md)** — Delegate tasks to subagents
-- **[Agent Hierarchy](docs/agent-hierarchy.md)** — Main, orchestrator, and subagent roles
-- **[Cron Patterns](docs/cron-patterns.md)** — Scheduled automation
-- **[Key Vault Integration](docs/keyvault-integration.md)** — Secure secret management
-- **[TODO Conventions](docs/todo-conventions.md)** — Task tracking best practices
+## Deferred Network Work
 
-## Architecture
-
-```
-Azure Resource Group
-├── VM (Ubuntu 24.04 ARM64)
-│   ├── System-assigned managed identity
-│   │   ├── Key Vault Secrets User (Key Vault scope)
-│   │   ├── Cost Management Contributor (subscription scope)
-│   │   └── Contributor (subscription scope)
-│   ├── OpenClaw gateway (systemd, loopback)
-│   ├── Tailscale (mesh VPN)
-│   └── Copilot CLI
-├── Key Vault (RBAC, secrets)
-├── VNet + NSG (SSH only)
-└── Public IP (static, DNS)
-
-Subscription-scoped
-├── Monthly budget ($150, alerts at $100/$135/$150)
-└── RBAC role assignments (Cost Mgmt Contributor, Contributor)
-```
-
-## License
-
-Personal configuration repository. Fork and customize for your own use.
+This pass intentionally preserves the existing public IP and SSH rule. A later change should move administration to Bastion or a Tailscale-only path and restrict the storage/Key Vault network surfaces with private endpoints or firewalls. Data remains non-anonymous and protected by Entra ID/RBAC in the current design.

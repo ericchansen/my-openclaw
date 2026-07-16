@@ -2,134 +2,69 @@
 package_update: true
 package_upgrade: true
 
-packages:
-  - curl
-  - git
-  - build-essential
+write_files:
+  - path: /opt/openclaw/runtime-assets/install-openclaw-runtime.sh
+    owner: root:root
+    permissions: '0755'
+    encoding: b64
+    content: __INSTALLER_B64__
+  - path: /opt/openclaw/runtime-assets/openclaw-gateway.service
+    owner: root:root
+    permissions: '0644'
+    encoding: b64
+    content: __GATEWAY_SERVICE_B64__
+  - path: /opt/openclaw/runtime-assets/openclaw-backup.service
+    owner: root:root
+    permissions: '0644'
+    encoding: b64
+    content: __BACKUP_SERVICE_B64__
+  - path: /opt/openclaw/runtime-assets/openclaw-backup.timer
+    owner: root:root
+    permissions: '0644'
+    encoding: b64
+    content: __BACKUP_TIMER_B64__
+  - path: /opt/openclaw/runtime-assets/openclaw-health.service
+    owner: root:root
+    permissions: '0644'
+    encoding: b64
+    content: __HEALTH_SERVICE_B64__
+  - path: /opt/openclaw/runtime-assets/openclaw-health.timer
+    owner: root:root
+    permissions: '0644'
+    encoding: b64
+    content: __HEALTH_TIMER_B64__
+  - path: /opt/openclaw/runtime-assets/openclaw-backup.sh
+    owner: root:root
+    permissions: '0755'
+    encoding: b64
+    content: __BACKUP_SCRIPT_B64__
+  - path: /opt/openclaw/runtime-assets/openclaw-restore-verify.sh
+    owner: root:root
+    permissions: '0755'
+    encoding: b64
+    content: __RESTORE_VERIFY_SCRIPT_B64__
+  - path: /opt/openclaw/runtime-assets/openclaw-health-check.sh
+    owner: root:root
+    permissions: '0755'
+    encoding: b64
+    content: __HEALTH_SCRIPT_B64__
+  - path: /opt/openclaw/runtime-assets/openclaw-keyvault-resolver.py
+    owner: root:root
+    permissions: '0755'
+    encoding: b64
+    content: __KEYVAULT_RESOLVER_B64__
+  - path: /opt/openclaw/runtime-assets/openclaw-gateway-launch.py
+    owner: root:root
+    permissions: '0555'
+    encoding: b64
+    content: __GATEWAY_LAUNCH_B64__
+  - path: /opt/openclaw/runtime-assets/openclaw-gog-launch.py
+    owner: root:root
+    permissions: '0555'
+    encoding: b64
+    content: __GOG_LAUNCH_B64__
 
 runcmd:
-  # Install Node.js 22 LTS via NodeSource
-  - curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-  - apt-get install -y nodejs
-
-  # Install Tailscale
-  - curl -fsSL https://tailscale.com/install.sh | sh
-
-  # Install Azure CLI (for Key Vault secret retrieval)
-  - curl -sL https://aka.ms/InstallAzureCLIDeb | bash
-
-  # Install OpenClaw and Copilot CLI globally
-  - npm install -g openclaw@latest
-  - npm install -g @github/copilot@prerelease
-
-  # Create a script to fetch secrets from Key Vault via managed identity (interactive use)
-  - |
-    cat > /usr/local/bin/openclaw-fetch-secrets << 'SCRIPT'
-    #!/bin/bash
-    # Fetch all secrets from Azure Key Vault using VM managed identity.
-    # Secret names are converted: UPPER-CASE-DASHES → UPPER_CASE_UNDERSCORES
-    # Usage: source openclaw-fetch-secrets <vault-name>
-    VAULT_NAME="${1:-}"
-    if [ -z "$VAULT_NAME" ]; then
-      echo "Usage: openclaw-fetch-secrets <vault-name>" >&2
-      return 1
-    fi
-    if ! az login --identity --allow-no-subscriptions >/dev/null 2>&1; then
-      echo "ERROR: Managed identity login failed. Is the VM identity enabled?" >&2
-      return 1
-    fi
-    for SECRET_NAME in $(az keyvault secret list --vault-name "$VAULT_NAME" --query "[].name" -o tsv 2>/dev/null); do
-      ENV_VAR=$(echo "$SECRET_NAME" | tr '[:lower:]-' '[:upper:]_')
-      VALUE="$(az keyvault secret show --vault-name "$VAULT_NAME" --name "$SECRET_NAME" --query value -o tsv 2>/dev/null)"
-      if [ -n "$VALUE" ]; then
-        export "$ENV_VAR=$VALUE"
-        echo "  ✓ $ENV_VAR"
-      fi
-    done
-    SCRIPT
-  - chmod +x /usr/local/bin/openclaw-fetch-secrets
-
-  # Write vault name to config file (read by openclaw-fetch-kv at service start)
-  - mkdir -p /etc/openclaw
-  - echo "kv-oc-rxymqpr5urgyw" > /etc/openclaw/vault-name
-
-  # Create a script for systemd ExecStartPre (writes env file instead of exporting)
-  - |
-    cat > /usr/local/bin/openclaw-fetch-kv << 'SCRIPT'
-    #!/bin/bash
-    set -euo pipefail
-
-    CONFIG_FILE="/etc/openclaw/vault-name"
-    ENV_FILE="/run/openclaw-gateway/env"
-
-    if [ ! -f "$CONFIG_FILE" ]; then
-      echo "ERROR: Vault config not found at $CONFIG_FILE" >&2
-      exit 1
-    fi
-    VAULT_NAME="$(cat "$CONFIG_FILE" | tr -d '[:space:]')"
-    if [ -z "$VAULT_NAME" ]; then
-      echo "ERROR: Vault name is empty in $CONFIG_FILE" >&2
-      exit 1
-    fi
-
-    if ! az login --identity --allow-no-subscriptions >/dev/null 2>&1; then
-      echo "ERROR: Managed identity login failed" >&2
-      exit 1
-    fi
-
-    > "$ENV_FILE"
-    SECRET_COUNT=0
-    for SECRET_NAME in $(az keyvault secret list --vault-name "$VAULT_NAME" --query "[].name" -o tsv 2>&1); do
-      ENV_VAR=$(echo "$SECRET_NAME" | tr '[:lower:]-' '[:upper:]_')
-      VALUE="$(az keyvault secret show --vault-name "$VAULT_NAME" --name "$SECRET_NAME" --query value -o tsv 2>&1)" || {
-        echo "WARNING: Failed to fetch secret $SECRET_NAME" >&2
-        continue
-      }
-      if [ -n "$VALUE" ]; then
-        echo "${ENV_VAR}=${VALUE}" >> "$ENV_FILE"
-        SECRET_COUNT=$((SECRET_COUNT + 1))
-      fi
-    done
-    chmod 600 "$ENV_FILE"
-
-    if [ "$SECRET_COUNT" -eq 0 ]; then
-      echo "WARNING: No secrets fetched from $VAULT_NAME" >&2
-      exit 1
-    fi
-    echo "Fetched $SECRET_COUNT secrets from Key Vault"
-    SCRIPT
-  - chmod +x /usr/local/bin/openclaw-fetch-kv
-
-  # Create systemd service for OpenClaw gateway (loopback-only for security)
-  # NOTE: Canonical copy lives at config/openclaw-gateway.service — keep in sync.
-  - |
-    cat > /etc/systemd/system/openclaw-gateway.service << 'EOF'
-    [Unit]
-    Description=OpenClaw Gateway
-    After=network-online.target
-    Wants=network-online.target
-
-    [Service]
-    Type=simple
-    User=azureuser
-    RuntimeDirectory=openclaw-gateway
-    Environment=HOME=/home/azureuser
-    Environment=NODE_ENV=production
-    Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-    ExecStartPre=/usr/local/bin/openclaw-fetch-kv
-    EnvironmentFile=-/run/openclaw-gateway/env
-    ExecStart=/usr/bin/openclaw gateway --bind loopback --port 18789
-    Restart=always
-    RestartSec=5
-    TimeoutStopSec=30
-
-    [Install]
-    WantedBy=multi-user.target
-    EOF
-
-  - systemctl daemon-reload
-  - systemctl enable openclaw-gateway.service
-
-  - echo "OpenClaw installation complete."
-  - echo "Next: run 'sudo tailscale up' to join your tailnet, then 'openclaw onboard'."
-  - echo "To load Key Vault secrets: source openclaw-fetch-secrets <vault-name>"
+  - [bash, /opt/openclaw/runtime-assets/install-openclaw-runtime.sh, --asset-dir, /opt/openclaw/runtime-assets, --user, __ADMIN_USERNAME__, --key-vault, __KEY_VAULT_NAME__, --storage-account, __STORAGE_ACCOUNT_NAME__, --storage-container, __STORAGE_CONTAINER_NAME__, --openclaw-version, __OPENCLAW_VERSION__, --node-version, __NODE_VERSION__, --node-sha256, __NODE_SHA256__, --copilot-version, __COPILOT_VERSION__]
+  - [systemctl, start, openclaw-backup.timer, openclaw-health.timer]
+  - [bash, -c, 'echo "OpenClaw runtime provisioning complete; run tailscale up and openclaw onboard before starting the gateway."']
