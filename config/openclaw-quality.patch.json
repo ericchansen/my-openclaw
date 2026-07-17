@@ -1,6 +1,31 @@
 {
   "agents": {
     "defaults": {
+      "model": {
+        "primary": "github-copilot/gpt-5.6-sol",
+        "fallbacks": [
+          "github-copilot/claude-sonnet-5"
+        ]
+      },
+      "thinkingDefault": "high",
+      "utilityModel": "github-copilot/gpt-5.6-luna",
+      "models": {
+        "github-copilot/claude-sonnet-5": {
+          "alias": "fallback-sonnet-5"
+        },
+        "github-copilot/gpt-5.6-sol": {
+          "alias": "primary-sol",
+          "params": {
+            "thinking": "high"
+          }
+        },
+        "github-copilot/gpt-5.6-luna": {
+          "alias": "utility-luna",
+          "params": {
+            "thinking": "low"
+          }
+        }
+      },
       "contextPruning": {
         "mode": "cache-ttl",
         "ttl": "1h",
@@ -10,13 +35,20 @@
         "minPrunableToolChars": 50000
       },
       "subagents": {
-        "delegationMode": "suggest",
+        "delegationMode": "prefer",
         "maxConcurrent": 4,
         "maxSpawnDepth": 2,
         "maxChildrenPerAgent": 3,
-        "model": "github-copilot/claude-sonnet-4.6",
-        "thinking": "medium",
+        "model": "github-copilot/gpt-5.6-luna",
+        "thinking": "low",
         "runTimeoutSeconds": 2700
+      },
+      "heartbeat": {
+        "every": "2h",
+        "model": "github-copilot/gpt-5.6-sol",
+        "lightContext": true,
+        "isolatedSession": true,
+        "skipWhenBusy": true
       },
       "memorySearch": {
         "provider": "github-copilot",

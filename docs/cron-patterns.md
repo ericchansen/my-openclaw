@@ -42,6 +42,17 @@ Use an isolated agent only when interpretation or synthesis is necessary:
 
 Do not use cron to create an unbounded orchestration session. The scheduled parent still owns any native children and must use `sessions_yield`, verify their evidence, and synthesize the delivery.
 
+### Model policy
+
+The interactive parent uses GPT-5.6 Sol as the control plane. Persist each automation's execution policy instead of inheriting whichever interactive model happens to be current:
+
+- no model for deterministic scripts, probes, backups, renewals, and exact transformations;
+- `github-copilot/gpt-5.6-luna` with low thinking for bounded, low-risk extraction, formatting, or triage;
+- `github-copilot/gpt-5.6-sol` with high thinking for development, multi-source research, ambiguous synthesis, or sensitive outcomes;
+- choose Sol when classification is uncertain.
+
+Sol may select this policy when it creates or edits a job, but the stored job remains explicit and auditable. Do not let a heartbeat silently rewrite existing job policy.
+
 ## Example Creation Workflow
 
 Flags can evolve; confirm them against installed `2026.7.1` help:
@@ -54,8 +65,8 @@ openclaw cron create \
   --tz "UTC" \
   --session isolated \
   --light-context \
-  --model "github-copilot/claude-opus-4.6" \
-  --fallbacks "github-copilot/claude-sonnet-4.6,github-copilot/gemini-2.5-pro" \
+  --model "github-copilot/gpt-5.6-sol" \
+  --fallbacks "github-copilot/claude-sonnet-5" \
   --thinking "high" \
   --timeout-seconds 900 \
   --announce \
@@ -85,4 +96,4 @@ openclaw cron edit <job-id> \
 - job can be retried safely;
 - ownership and rollback are documented.
 
-Use a heartbeat only for a few batched, context-aware checks that tolerate drift. Use cron for exact timing and isolated execution.
+Use a heartbeat only for a few batched, context-aware checks that tolerate drift. The template runs a lightweight isolated Sol heartbeat every two hours; it should classify and delegate bounded work rather than execute a long workflow inline. Use cron for exact timing and isolated execution.

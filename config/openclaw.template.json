@@ -41,12 +41,13 @@
   "agents": {
     "defaults": {
       "model": {
-        "primary": "github-copilot/claude-sonnet-5",
+        "primary": "github-copilot/gpt-5.6-sol",
         "fallbacks": [
-          "github-copilot/gpt-5.6-sol"
+          "github-copilot/claude-sonnet-5"
         ]
       },
       "thinkingDefault": "high",
+      "utilityModel": "github-copilot/gpt-5.6-luna",
       "models": {
         "github-copilot/claude-opus-4.6": {
           "alias": "previous-primary-opus"
@@ -61,10 +62,19 @@
           "alias": "benchmark-opus-4-8"
         },
         "github-copilot/claude-sonnet-5": {
-          "alias": "primary-sonnet-5"
+          "alias": "fallback-sonnet-5"
         },
         "github-copilot/gpt-5.6-sol": {
-          "alias": "fallback-gpt-5-6-sol"
+          "alias": "primary-sol",
+          "params": {
+            "thinking": "high"
+          }
+        },
+        "github-copilot/gpt-5.6-luna": {
+          "alias": "utility-luna",
+          "params": {
+            "thinking": "low"
+          }
         }
       },
       "workspace": "/home/azureuser/.openclaw/workspace",
@@ -79,13 +89,20 @@
         "minPrunableToolChars": 50000
       },
       "subagents": {
-        "delegationMode": "suggest",
+        "delegationMode": "prefer",
         "maxConcurrent": 4,
         "maxSpawnDepth": 2,
         "maxChildrenPerAgent": 3,
-        "model": "github-copilot/claude-sonnet-4.6",
-        "thinking": "medium",
+        "model": "github-copilot/gpt-5.6-luna",
+        "thinking": "low",
         "runTimeoutSeconds": 2700
+      },
+      "heartbeat": {
+        "every": "2h",
+        "model": "github-copilot/gpt-5.6-sol",
+        "lightContext": true,
+        "isolatedSession": true,
+        "skipWhenBusy": true
       },
       "memorySearch": {
         "provider": "github-copilot",
@@ -125,7 +142,13 @@
       {
         "id": "orchestrator",
         "workspace": "/home/azureuser/.openclaw/workspace",
-        "model": "github-copilot/claude-sonnet-4.6",
+        "model": {
+          "primary": "github-copilot/gpt-5.6-sol",
+          "fallbacks": [
+            "github-copilot/claude-sonnet-5"
+          ]
+        },
+        "thinkingDefault": "high",
         "identity": {
           "name": "Orchestrator",
           "emoji": "🎯"

@@ -12,7 +12,7 @@ Reproducible Azure VM deployment and operating model for a private OpenClaw gate
 - Structured local health checks collected by Azure Monitor/Log Analytics
 - Parent-owned native OpenClaw orchestration for complex requests
 - Builtin hybrid memory search using GitHub Copilot embeddings over curated private files
-- Claude Sonnet 5 with high reasoning as primary and GPT-5.6 Sol as fallback
+- GPT-5.6 Sol with high reasoning as the interactive control plane, Claude Sonnet 5 as fallback, and GPT-5.6 Luna for bounded low-risk background work
 
 Telegram and Discord configuration is an overlay on the live VM. Deployment automation never runs onboarding or replaces a working channel configuration wholesale.
 
@@ -101,7 +101,7 @@ For an existing deployment:
 1. Create and verify a backup.
 2. Install the Key Vault resolver.
 3. Add the exec provider and credential references through the OpenClaw secrets workflow.
-4. Apply only the non-secret quality patch paths needed for pruning, planning, Tool Search, subagents, hybrid memory, trusted plugin allowlisting, diagnostics, and logging.
+4. Apply only the non-secret quality patch paths needed for the Sol/Luna model policy, pruning, planning, Tool Search, subagents, heartbeat, hybrid memory, trusted plugin allowlisting, diagnostics, and logging.
 5. Validate before restart.
 6. Compare sanitized before/after channel and cron structures.
 7. Exercise Telegram, Discord, Gmail, model, cron, and native task handoff through their existing identities.

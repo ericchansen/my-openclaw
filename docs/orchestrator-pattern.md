@@ -36,14 +36,17 @@ Prefer isolated context. Use forked context only when the child needs the curren
 The template uses:
 
 - parent concurrency: 4;
-- child model: Sonnet 4.6, medium thinking;
-- delegation mode: suggest;
+- parent model: GPT-5.6 Sol, high thinking;
+- low-risk child default: GPT-5.6 Luna, low thinking;
+- delegation mode: prefer;
 - child concurrency: 4;
 - maximum spawn depth: 2;
 - maximum children per agent: 3;
 - run timeout: 2,700 seconds.
 
 These are upper bounds, not targets. A single parent often needs zero or one child. Avoid fan-out where the merge cost exceeds the parallel gain.
+
+Sol is the control plane, not merely the most expensive worker. It keeps the user conversation, scope decisions, integration, and final verification. The Luna default is only a safe economy for bounded low-risk work. Every spawn should select its model and thinking level explicitly: use Sol/high for development, multi-source research, ambiguous synthesis, and sensitive decisions. Use Luna/low for mechanical extraction, formatting, or deterministic tool work. Choose Sol when classification is uncertain.
 
 ## Repository Lane
 
