@@ -73,13 +73,15 @@ $assets = @(
     "$root\config\openclaw-backup.timer",
     "$root\config\openclaw-health.service",
     "$root\config\openclaw-health.timer",
+    "$root\config\openclaw-journald.conf",
     "$PSScriptRoot\install-openclaw-runtime.sh",
     "$PSScriptRoot\openclaw-backup.sh",
     "$PSScriptRoot\openclaw-restore-verify.sh",
     "$PSScriptRoot\openclaw-health-check.sh",
     "$PSScriptRoot\openclaw-keyvault-resolver.py",
     "$PSScriptRoot\openclaw-gateway-launch.py",
-    "$PSScriptRoot\openclaw-gog-launch.py"
+    "$PSScriptRoot\openclaw-gog-launch.py",
+    "$PSScriptRoot\openclaw-mcp-launch.py"
 )
 foreach ($asset in $assets) {
     if (-not (Test-Path -LiteralPath $asset)) { throw "Missing asset: $asset" }

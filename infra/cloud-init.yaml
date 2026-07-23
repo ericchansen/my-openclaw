@@ -33,6 +33,11 @@ write_files:
     permissions: '0644'
     encoding: b64
     content: __HEALTH_TIMER_B64__
+  - path: /opt/openclaw/runtime-assets/openclaw-journald.conf
+    owner: root:root
+    permissions: '0644'
+    encoding: b64
+    content: __JOURNALD_CONFIG_B64__
   - path: /opt/openclaw/runtime-assets/openclaw-backup.sh
     owner: root:root
     permissions: '0755'
@@ -46,8 +51,8 @@ write_files:
   - path: /opt/openclaw/runtime-assets/openclaw-health-check.sh
     owner: root:root
     permissions: '0755'
-    encoding: b64
-    content: __HEALTH_SCRIPT_B64__
+    encoding: gzip+base64
+    content: __HEALTH_SCRIPT_GZIP_B64__
   - path: /opt/openclaw/runtime-assets/openclaw-keyvault-resolver.py
     owner: root:root
     permissions: '0755'
@@ -63,8 +68,13 @@ write_files:
     permissions: '0555'
     encoding: b64
     content: __GOG_LAUNCH_B64__
+  - path: /opt/openclaw/runtime-assets/openclaw-mcp-launch.py
+    owner: root:root
+    permissions: '0555'
+    encoding: b64
+    content: __MCP_LAUNCH_B64__
 
 runcmd:
-  - [bash, /opt/openclaw/runtime-assets/install-openclaw-runtime.sh, --asset-dir, /opt/openclaw/runtime-assets, --user, __ADMIN_USERNAME__, --key-vault, __KEY_VAULT_NAME__, --storage-account, __STORAGE_ACCOUNT_NAME__, --storage-container, __STORAGE_CONTAINER_NAME__, --openclaw-version, __OPENCLAW_VERSION__, --node-version, __NODE_VERSION__, --node-sha256, __NODE_SHA256__, --copilot-version, __COPILOT_VERSION__]
+  - [bash, /opt/openclaw/runtime-assets/install-openclaw-runtime.sh, --asset-dir, /opt/openclaw/runtime-assets, --user, __ADMIN_USERNAME__, --key-vault, __KEY_VAULT_NAME__, --storage-account, __STORAGE_ACCOUNT_NAME__, --storage-container, __STORAGE_CONTAINER_NAME__, --openclaw-version, __OPENCLAW_VERSION__, --node-version, __NODE_VERSION__, --node-sha256, __NODE_SHA256__, --copilot-version, __COPILOT_VERSION__, --mcp-ebird-version, __MCP_EBIRD_VERSION__, --mcp-pondlog-version, __MCP_PONDLOG_VERSION__]
   - [systemctl, start, openclaw-backup.timer, openclaw-health.timer]
   - [bash, -c, 'echo "OpenClaw runtime provisioning complete; run tailscale up and openclaw onboard before starting the gateway."']

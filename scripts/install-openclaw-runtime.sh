@@ -14,6 +14,8 @@ openclaw_version=2026.7.1
 node_version=22.23.1
 node_sha256=0294e8b915ab75f92c7513d2fcb830ae06e10684e6c603e99a87dbf8835389c1
 copilot_version=1.0.71-3
+mcp_ebird_version=0.1.5
+mcp_pondlog_version=0.4.0
 restart_gateway=true
 asset_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -27,6 +29,8 @@ while [[ $# -gt 0 ]]; do
     --node-version) node_version="$2"; shift 2 ;;
     --node-sha256) node_sha256="$2"; shift 2 ;;
     --copilot-version) copilot_version="$2"; shift 2 ;;
+    --mcp-ebird-version) mcp_ebird_version="$2"; shift 2 ;;
+    --mcp-pondlog-version) mcp_pondlog_version="$2"; shift 2 ;;
     --asset-dir) asset_dir="$2"; shift 2 ;;
     --skip-gateway-restart) restart_gateway=false; shift ;;
     *) printf 'Unknown argument: %s\n' "$1" >&2; exit 64 ;;
@@ -50,12 +54,14 @@ required_assets=(
   openclaw-backup.timer
   openclaw-health.service
   openclaw-health.timer
+  openclaw-journald.conf
   openclaw-backup.sh
   openclaw-restore-verify.sh
   openclaw-health-check.sh
   openclaw-keyvault-resolver.py
   openclaw-gateway-launch.py
   openclaw-gog-launch.py
+  openclaw-mcp-launch.py
 )
 for asset in "${required_assets[@]}"; do
   [[ -f "$asset_dir/$asset" ]] || {
@@ -63,6 +69,37 @@ for asset in "${required_assets[@]}"; do
     exit 66
   }
 done
+
+ensure_merged_lib64() {
+  local source target
+  local -a entries
+  if [[ -d /lib64 && ! -L /lib64 ]]; then
+    install -d -o root -g root -m 0755 /usr/lib64
+    shopt -s dotglob nullglob
+    entries=(/lib64/*)
+    shopt -u dotglob nullglob
+    for source in "${entries[@]}"; do
+      target="/usr/lib64/$(basename "$source")"
+      if [[ -e "$target" || -L "$target" ]]; then
+        if [[ -f "$source" && -f "$target" ]] && cmp --silent "$source" "$target"; then
+          rm -f -- "$source"
+        else
+          printf 'Refusing conflicting merged-/usr path: %s\n' "$target" >&2
+          exit 78
+        fi
+      else
+        mv -- "$source" "$target"
+      fi
+    done
+    rmdir /lib64
+    ln -s usr/lib64 /lib64
+  fi
+  if [[ -e /lib64 && ! -L /lib64 ]]; then
+    printf '/lib64 is not compatible with merged-/usr.\n' >&2
+    exit 78
+  fi
+}
+ensure_merged_lib64
 
 export DEBIAN_FRONTEND=noninteractive
 # Package maintenance must never restart unrelated host services.
@@ -102,6 +139,25 @@ openclaw_executable="$(readlink -f "$(command -v openclaw)")"
 install -d -o root -g root -m 0755 /usr/local/libexec
 ln -sfn -- "$openclaw_executable" /usr/local/libexec/openclaw
 chown -h root:root /usr/local/libexec/openclaw
+
+install -d -o root -g root -m 0755 /usr/local/lib/openclaw-mcp
+npm install --global --omit=dev --prefix /usr/local/lib/openclaw-mcp \
+  "@pondlog/mcp-ebird@${mcp_ebird_version}" \
+  "@pondlog/mcp-pondlog@${mcp_pondlog_version}"
+[[ -x /usr/local/lib/openclaw-mcp/bin/pondlog-mcp-ebird ]]
+[[ -x /usr/local/lib/openclaw-mcp/bin/pondlog-mcp-pondlog ]]
+node -e '
+  const [path, expected] = process.argv.slice(1);
+  if (require(path).version !== expected) process.exit(1);
+' \
+  /usr/local/lib/openclaw-mcp/lib/node_modules/@pondlog/mcp-ebird/package.json \
+  "$mcp_ebird_version"
+node -e '
+  const [path, expected] = process.argv.slice(1);
+  if (require(path).version !== expected) process.exit(1);
+' \
+  /usr/local/lib/openclaw-mcp/lib/node_modules/@pondlog/mcp-pondlog/package.json \
+  "$mcp_pondlog_version"
 
 gog_executable=
 if [[ -x /usr/local/libexec/gog ]] && \
@@ -159,6 +215,9 @@ OPENCLAW_BACKUP_CONTAINER=${storage_container}
 OPENCLAW_HEALTH_URL=http://127.0.0.1:18789/health
 OPENCLAW_BACKUP_STATUS=/var/lib/openclaw-runtime/backup-status.json
 OPENCLAW_BACKUP_MAX_AGE_SECONDS=129600
+OPENCLAW_HEALTH_STATE_DIR=/var/lib/openclaw-runtime/health
+OPENCLAW_CRON_RECENT_FAILURE_SECONDS=7200
+OPENCLAW_CRON_FAILURE_THRESHOLD=2
 EOF
 chown root:root /etc/openclaw/runtime.env
 chmod 0644 /etc/openclaw/runtime.env
@@ -178,6 +237,9 @@ install -o root -g root -m 0555 \
 install -o root -g root -m 0555 \
   "$asset_dir/openclaw-gog-launch.py" \
   /usr/local/bin/openclaw-gog-launch
+install -o root -g root -m 0555 \
+  "$asset_dir/openclaw-mcp-launch.py" \
+  /usr/local/bin/openclaw-mcp-launch
 if [[ -n "$gog_executable" ]]; then
   ln -sfn -- /usr/local/bin/openclaw-gog-launch /usr/local/bin/gog
   chown -h root:root /usr/local/bin/gog
@@ -188,9 +250,23 @@ for unit in openclaw-gateway.service openclaw-backup.service openclaw-health.ser
 done
 install -m 0644 "$asset_dir/openclaw-backup.timer" /etc/systemd/system/openclaw-backup.timer
 install -m 0644 "$asset_dir/openclaw-health.timer" /etc/systemd/system/openclaw-health.timer
+journald_changed=false
+install -d -o root -g root -m 0755 /etc/systemd/journald.conf.d
+if ! cmp --silent \
+  "$asset_dir/openclaw-journald.conf" \
+  /etc/systemd/journald.conf.d/60-openclaw-retention.conf 2>/dev/null; then
+  install -o root -g root -m 0644 \
+    "$asset_dir/openclaw-journald.conf" \
+    /etc/systemd/journald.conf.d/60-openclaw-retention.conf
+  journald_changed=true
+fi
 chmod 0644 /etc/systemd/system/openclaw-*.service
 install -d -o "$openclaw_user" -g "$openclaw_user" -m 0750 \
   /var/log/openclaw /var/lib/openclaw-runtime
+install -d -o "$openclaw_user" -g "$openclaw_user" -m 0700 \
+  /var/lib/openclaw-runtime/health
+install -d -o root -g systemd-journal -m 2755 /var/log/journal
+systemd-tmpfiles --create --prefix /var/log/journal
 touch /var/log/openclaw/openclaw.log
 chown "$openclaw_user:$openclaw_user" /var/log/openclaw/openclaw.log
 chmod 0600 /var/log/openclaw/openclaw.log
@@ -225,6 +301,9 @@ if [[ "$docker_missing" == true ]]; then
 fi
 
 systemctl daemon-reload
+if [[ "$journald_changed" == true ]]; then
+  systemctl restart systemd-journald.service
+fi
 systemctl enable docker.service rsyslog.service tailscaled.service
 systemctl enable openclaw-backup.timer openclaw-health.timer
 systemctl restart openclaw-backup.timer openclaw-health.timer

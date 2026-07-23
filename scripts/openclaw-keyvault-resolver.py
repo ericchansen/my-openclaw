@@ -36,6 +36,7 @@ BASE_ALLOWLIST = frozenset(
         "GITHUB-TOKEN",
         "GITHUB-COPILOT-TOKEN",
         "BRAVE-API-KEY",
+        "EBIRD-API-KEY",
         "GOG-KEYRING-PASSWORD",
     }
 )

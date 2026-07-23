@@ -25,7 +25,7 @@ This direct path avoids shared Azure CLI login/cache races during concurrent sec
 ## Least Privilege
 
 - Grant the VM identity only `secrets/get` for the required vault/scope.
-- Allowlist the exact IDs: gateway, Telegram, Discord, GitHub/Copilot, Brave, and the Gmail keyring credential required by the supervised watcher.
+- Allowlist the exact IDs: gateway, Telegram, Discord, GitHub/Copilot, Brave, eBird, and the Gmail keyring credential required by the supervised watcher.
 - Use separate identities/vaults for environments where practical.
 - Restrict executable ownership and deployment separately from secret-read permission.
 - Rotate in Key Vault; do not rewrite configuration for a value change.
@@ -45,6 +45,13 @@ Supported fields use:
 The template covers gateway, Telegram, Discord, and Brave search. For an existing GitHub Copilot auth profile, preserve its saved Copilot token in a dedicated `GITHUB-COPILOT-TOKEN` Key Vault entry and migrate the persisted credential to the profile's supported `tokenRef` surface. Do not substitute a generic GitHub PAT. Confirm model entitlement separately.
 
 OpenClaw 2026.7.1 does not expose the Gmail keyring password as a supported SecretRef field. The gateway must not inherit this credential because host-exec tools inherit its environment. The installer therefore keeps the real `gog` executable at `/usr/local/libexec/gog` and exposes a root-owned `/usr/local/bin/gog` launcher. The launcher resolves only `GOG-KEYRING-PASSWORD` immediately before executing `gog`, so the gateway and unrelated agent subprocesses do not receive it. It must not materialize the value in a file, command line, systemd environment file, or log. If `gog` is installed after initial provisioning, rerun the runtime installer to activate the launcher.
+
+The MCP configuration surface also does not support SecretRefs in 2026.7.1. The runtime
+installer pins eBird and Pondlog under `/usr/local/lib/openclaw-mcp` and installs the
+root-owned `/usr/local/bin/openclaw-mcp-launch` wrapper. The wrapper accepts only `ebird`
+or `pondlog`, resolves `EBIRD-API-KEY` immediately before process execution, and exposes
+it only as the child process's `EBIRD_API_KEY`. MCP config must use the launcher with no
+`env` block; never use `npx` or store the key in `openclaw.json`.
 
 ## Channel-Preserving Migration
 
@@ -79,7 +86,9 @@ Verify without `echo`, `printenv`, shell tracing, command substitution, or retri
 - config validation and secrets audit are clean;
 - gateway starts with redacted logs;
 - the gateway process environment does not contain `GOG_KEYRING_PASSWORD`;
+- the gateway process environment does not contain `EBIRD_API_KEY`;
 - `/usr/local/bin/gog` resolves through the launcher while `/usr/local/libexec/gog` is the root-controlled real executable;
+- eBird and Pondlog resolve through `/usr/local/bin/openclaw-mcp-launch` to the pinned binaries without `npx`;
 - existing Telegram, Discord, Gmail, GitHub/Copilot, and Brave operations succeed;
 - logs contain no values or resolver payloads.
 
