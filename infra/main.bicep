@@ -651,7 +651,7 @@ resource runtimeHealthAlert 'Microsoft.Insights/scheduledQueryRules@2023-12-01' 
   location: location
   properties: {
     displayName: 'OpenClaw runtime health check failed'
-    description: 'The same actionable gateway, channel, security, secrets, cron, or task failure persisted across separated health records.'
+    description: 'The same actionable failure occurred across separated records and remains present in the latest schema-v2 health record.'
     enabled: true
     severity: 1
     scopes: [
@@ -662,7 +662,7 @@ resource runtimeHealthAlert 'Microsoft.Insights/scheduledQueryRules@2023-12-01' 
     criteria: {
       allOf: [
         {
-          query: 'Syslog | where Facility == "local6" and ProcessName == "openclaw-health" | extend d = parse_json(SyslogMessage) | where toint(d.schemaVersion) >= 2 | mv-expand Failure = todynamic(d.actionableFailures) | extend Failure = tostring(Failure) | where isnotempty(Failure) | summarize FailureSamples = count(), FirstFailure = min(TimeGenerated), LastFailure = max(TimeGenerated) by Failure | where FailureSamples >= 2 and LastFailure - FirstFailure >= 10m'
+          query: 'let Health = Syslog | where Facility == "local6" and ProcessName == "openclaw-health" | extend d = parse_json(SyslogMessage) | where toint(d.schemaVersion) >= 2 | project TimeGenerated, Failures = todynamic(d.actionableFailures); let LatestHealth = toscalar(Health | summarize max(TimeGenerated)); Health | mv-expand Failure = Failures | extend Failure = tostring(Failure) | where isnotempty(Failure) | summarize FailureSamples = count(), FirstFailure = min(TimeGenerated), LastFailure = max(TimeGenerated) by Failure | where FailureSamples >= 2 and LastFailure - FirstFailure >= 10m and LastFailure == LatestHealth'
           timeAggregation: 'Count'
           operator: 'GreaterThan'
           threshold: 0
@@ -684,7 +684,7 @@ resource missingHealthAlert 'Microsoft.Insights/scheduledQueryRules@2023-12-01' 
   location: location
   properties: {
     displayName: 'OpenClaw runtime health records missing'
-    description: 'No structured OpenClaw health record has arrived for 50 minutes.'
+    description: 'No complete schema-v2 OpenClaw health record has arrived for 50 minutes.'
     enabled: true
     severity: 1
     scopes: [
@@ -695,7 +695,7 @@ resource missingHealthAlert 'Microsoft.Insights/scheduledQueryRules@2023-12-01' 
     criteria: {
       allOf: [
         {
-          query: 'print LastHealth=toscalar(Syslog | where Facility == "local6" and ProcessName == "openclaw-health" | summarize max(TimeGenerated)) | where isnull(LastHealth) or LastHealth < ago(50m)'
+          query: 'print LastHealth=toscalar(Syslog | where Facility == "local6" and ProcessName == "openclaw-health" | extend d = parse_json(SyslogMessage) | where toint(d.schemaVersion) >= 2 | summarize max(TimeGenerated)) | where isnull(LastHealth) or LastHealth < ago(50m)'
           timeAggregation: 'Count'
           operator: 'GreaterThan'
           threshold: 0

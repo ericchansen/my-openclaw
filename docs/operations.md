@@ -15,9 +15,9 @@ OpenClaw cron owns precise agent and command jobs. Long-running deterministic wa
 The local health check emits one bounded redacted JSON record to syslog `local6`. Azure Monitor collects that facility and alerts on:
 
 - VM availability;
-- health records missing for 50 minutes;
+- complete schema-v2 health records missing for 50 minutes;
 - the same actionable gateway, channel, security, secrets, cron, or task failure present
-  in two records separated by at least ten minutes;
+  in two records separated by at least ten minutes and still present in the latest record;
 - stale or failed backups;
 - disk use at 75%, 85%, and 92%.
 
