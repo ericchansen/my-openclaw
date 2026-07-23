@@ -84,6 +84,12 @@ openclaw cron edit <job-id> \
 
 `cron create` does not accept failure-alert flags in 2026.7.1, so configure them with `cron edit` after capturing the new job ID. Use `openclaw cron run <job-id>` for a controlled test, then inspect `openclaw cron runs --id <job-id>`. Prefer editing an existing job to delete/recreate so run history and identity remain clear.
 
+For daily user-facing synthesis jobs, start with two consecutive execution errors,
+exclude scheduler skips, and use the existing delivery route unless a separate operational
+destination is required. This reports a real retry sequence without turning a retained
+daily-job error into a day-long platform outage. Keep Azure scheduler health separate from
+the job's built-in failure delivery.
+
 ## Reliability Checklist
 
 - timezone and daylight-saving behavior are explicit;

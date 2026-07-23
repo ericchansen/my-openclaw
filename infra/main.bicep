@@ -46,6 +46,12 @@ param nodeArm64Sha256 string = '0294e8b915ab75f92c7513d2fcb830ae06e10684e6c603e9
 @description('Tested GitHub Copilot CLI npm package version')
 param copilotVersion string = '1.0.71-3'
 
+@description('Tested Pondlog eBird MCP npm package version')
+param mcpEbirdVersion string = '0.1.5'
+
+@description('Tested Pondlog MCP npm package version')
+param mcpPondlogVersion string = '0.4.0'
+
 @description('Canonical Ubuntu 24.04 ARM64 image version. Keep the tested pin for new VMs; pass latest when updating a VM whose model already uses latest.')
 param ubuntuImageVersion string = '24.04.202607140'
 
@@ -73,20 +79,24 @@ var cloudInit03 = replace(cloudInit02, '__BACKUP_SERVICE_B64__', base64(loadText
 var cloudInit04 = replace(cloudInit03, '__BACKUP_TIMER_B64__', base64(loadTextContent('../config/openclaw-backup.timer')))
 var cloudInit05 = replace(cloudInit04, '__HEALTH_SERVICE_B64__', base64(loadTextContent('../config/openclaw-health.service')))
 var cloudInit06 = replace(cloudInit05, '__HEALTH_TIMER_B64__', base64(loadTextContent('../config/openclaw-health.timer')))
-var cloudInit07 = replace(cloudInit06, '__BACKUP_SCRIPT_B64__', base64(loadTextContent('../scripts/openclaw-backup.sh')))
-var cloudInit08 = replace(cloudInit07, '__RESTORE_VERIFY_SCRIPT_B64__', base64(loadTextContent('../scripts/openclaw-restore-verify.sh')))
-var cloudInit09 = replace(cloudInit08, '__HEALTH_SCRIPT_B64__', base64(loadTextContent('../scripts/openclaw-health-check.sh')))
-var cloudInit10 = replace(cloudInit09, '__KEYVAULT_RESOLVER_B64__', base64(loadTextContent('../scripts/openclaw-keyvault-resolver.py')))
-var cloudInit11 = replace(cloudInit10, '__GATEWAY_LAUNCH_B64__', base64(loadTextContent('../scripts/openclaw-gateway-launch.py')))
-var cloudInit12 = replace(cloudInit11, '__GOG_LAUNCH_B64__', base64(loadTextContent('../scripts/openclaw-gog-launch.py')))
-var cloudInit13 = replace(cloudInit12, '__ADMIN_USERNAME__', adminUsername)
-var cloudInit14 = replace(cloudInit13, '__KEY_VAULT_NAME__', keyVaultName)
-var cloudInit15 = replace(cloudInit14, '__STORAGE_ACCOUNT_NAME__', storageAccountName)
-var cloudInit16 = replace(cloudInit15, '__STORAGE_CONTAINER_NAME__', backupContainerName)
-var cloudInit17 = replace(cloudInit16, '__OPENCLAW_VERSION__', openclawVersion)
-var cloudInit18 = replace(cloudInit17, '__NODE_VERSION__', nodeVersion)
-var cloudInit19 = replace(cloudInit18, '__NODE_SHA256__', nodeArm64Sha256)
-var renderedCloudInit = replace(cloudInit19, '__COPILOT_VERSION__', copilotVersion)
+var cloudInit07 = replace(cloudInit06, '__JOURNALD_CONFIG_B64__', base64(loadTextContent('../config/openclaw-journald.conf')))
+var cloudInit08 = replace(cloudInit07, '__BACKUP_SCRIPT_B64__', base64(loadTextContent('../scripts/openclaw-backup.sh')))
+var cloudInit09 = replace(cloudInit08, '__RESTORE_VERIFY_SCRIPT_B64__', base64(loadTextContent('../scripts/openclaw-restore-verify.sh')))
+var cloudInit10 = replace(cloudInit09, '__HEALTH_SCRIPT_GZIP_B64__', loadTextContent('openclaw-health-check.sh.gz.b64'))
+var cloudInit11 = replace(cloudInit10, '__KEYVAULT_RESOLVER_B64__', base64(loadTextContent('../scripts/openclaw-keyvault-resolver.py')))
+var cloudInit12 = replace(cloudInit11, '__GATEWAY_LAUNCH_B64__', base64(loadTextContent('../scripts/openclaw-gateway-launch.py')))
+var cloudInit13 = replace(cloudInit12, '__GOG_LAUNCH_B64__', base64(loadTextContent('../scripts/openclaw-gog-launch.py')))
+var cloudInit14 = replace(cloudInit13, '__MCP_LAUNCH_B64__', base64(loadTextContent('../scripts/openclaw-mcp-launch.py')))
+var cloudInit15 = replace(cloudInit14, '__ADMIN_USERNAME__', adminUsername)
+var cloudInit16 = replace(cloudInit15, '__KEY_VAULT_NAME__', keyVaultName)
+var cloudInit17 = replace(cloudInit16, '__STORAGE_ACCOUNT_NAME__', storageAccountName)
+var cloudInit18 = replace(cloudInit17, '__STORAGE_CONTAINER_NAME__', backupContainerName)
+var cloudInit19 = replace(cloudInit18, '__OPENCLAW_VERSION__', openclawVersion)
+var cloudInit20 = replace(cloudInit19, '__NODE_VERSION__', nodeVersion)
+var cloudInit21 = replace(cloudInit20, '__NODE_SHA256__', nodeArm64Sha256)
+var cloudInit22 = replace(cloudInit21, '__COPILOT_VERSION__', copilotVersion)
+var cloudInit23 = replace(cloudInit22, '__MCP_EBIRD_VERSION__', mcpEbirdVersion)
+var renderedCloudInit = replace(cloudInit23, '__MCP_PONDLOG_VERSION__', mcpPondlogVersion)
 
 // Key Vault — RBAC authorization, soft delete + purge protection
 resource keyVault 'Microsoft.KeyVault/vaults@2024-11-01' = {
@@ -641,7 +651,7 @@ resource runtimeHealthAlert 'Microsoft.Insights/scheduledQueryRules@2023-12-01' 
   location: location
   properties: {
     displayName: 'OpenClaw runtime health check failed'
-    description: 'A redacted health record reports a failed gateway, CLI, channel, security, secrets, cron, or task check.'
+    description: 'The same actionable gateway, channel, security, secrets, cron, or task failure persisted across separated health records.'
     enabled: true
     severity: 1
     scopes: [
@@ -652,7 +662,7 @@ resource runtimeHealthAlert 'Microsoft.Insights/scheduledQueryRules@2023-12-01' 
     criteria: {
       allOf: [
         {
-          query: 'Syslog | where Facility == "local6" and ProcessName == "openclaw-health" | extend d = parse_json(SyslogMessage) | where tobool(d.gatewayOk) == false or tobool(d.gatewayServiceOk) == false or tobool(d.statusOk) == false or tobool(d.doctorOk) == false or tobool(d.channelOk) == false or tobool(d.securityOk) == false or tobool(d.secretsOk) == false or tobool(d.cronOk) == false or tobool(d.taskOk) == false'
+          query: 'Syslog | where Facility == "local6" and ProcessName == "openclaw-health" | extend d = parse_json(SyslogMessage) | where toint(d.schemaVersion) >= 2 | mv-expand Failure = todynamic(d.actionableFailures) | extend Failure = tostring(Failure) | where isnotempty(Failure) | summarize FailureSamples = count(), FirstFailure = min(TimeGenerated), LastFailure = max(TimeGenerated) by Failure | where FailureSamples >= 2 and LastFailure - FirstFailure >= 10m'
           timeAggregation: 'Count'
           operator: 'GreaterThan'
           threshold: 0
@@ -674,7 +684,7 @@ resource missingHealthAlert 'Microsoft.Insights/scheduledQueryRules@2023-12-01' 
   location: location
   properties: {
     displayName: 'OpenClaw runtime health records missing'
-    description: 'No structured OpenClaw health record has arrived for 35 minutes.'
+    description: 'No structured OpenClaw health record has arrived for 50 minutes.'
     enabled: true
     severity: 1
     scopes: [
@@ -685,7 +695,7 @@ resource missingHealthAlert 'Microsoft.Insights/scheduledQueryRules@2023-12-01' 
     criteria: {
       allOf: [
         {
-          query: 'print LastHealth=toscalar(Syslog | where Facility == "local6" and ProcessName == "openclaw-health" | summarize max(TimeGenerated)) | where isnull(LastHealth) or LastHealth < ago(35m)'
+          query: 'print LastHealth=toscalar(Syslog | where Facility == "local6" and ProcessName == "openclaw-health" | summarize max(TimeGenerated)) | where isnull(LastHealth) or LastHealth < ago(50m)'
           timeAggregation: 'Count'
           operator: 'GreaterThan'
           threshold: 0

@@ -160,6 +160,22 @@
     "backend": "builtin",
     "citations": "auto"
   },
+  "mcp": {
+    "servers": {
+      "ebird": {
+        "command": "/usr/local/bin/openclaw-mcp-launch",
+        "args": [
+          "ebird"
+        ]
+      },
+      "pondlog": {
+        "command": "/usr/local/bin/openclaw-mcp-launch",
+        "args": [
+          "pondlog"
+        ]
+      }
+    }
+  },
   "tools": {
     "profile": "coding",
     "alsoAllow": [

@@ -41,6 +41,9 @@ Do not pass bot tokens, PATs, or API keys to deployment scripts. Put credential 
 ## Deploy Azure Resources
 
 `deploy.ps1` is the canonical entry point. It validates and previews each resource-group or subscription deployment before applying that scope.
+When `scripts/openclaw-health-check.sh` changes, run
+`scripts/sync-cloud-init-assets.ps1`; deployment fails closed if the compressed
+cloud-init copy is stale.
 For a new VM, it resolves the signed-in Azure principal and grants that principal Key Vault Administrator so required secrets can be seeded; pass `-DeployerPrincipalId` when automatic resolution is unavailable. Existing-VM mode does not add that role unless explicitly requested.
 Remove the deployer assignment after secrets are seeded and SecretRefs are verified unless ongoing Key Vault administration is intentional.
 
@@ -83,11 +86,13 @@ After the infrastructure deployment outputs the Key Vault and storage names:
 The script requires an existing verified SSH host key and rejects an SSH target whose Azure IMDS resource ID does not match the snapshotted VM. The installer:
 
 - installs tested runtime versions;
+- installs exact pinned eBird/Pondlog MCP packages behind a Key Vault-aware launcher;
 - installs canonical gateway/backup/health units and scripts;
 - validates an active OpenClaw config before restarting the gateway;
 - prevents `needrestart` from restarting unrelated host services during package maintenance;
 - merges bounded Docker logging defaults without restarting Docker;
 - starts backup and health timers;
+- configures fixed missed-run-aware health cadence and bounded persistent journal retention;
 - never onboards or rewrites channels.
 
 Apply Docker daemon changes only during an operator-controlled window, then recreate only OpenClaw-owned containers. Do not stop unrelated projects.

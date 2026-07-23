@@ -8,6 +8,7 @@ Type=oneshot
 User=__OPENCLAW_USER__
 Environment=HOME=/home/__OPENCLAW_USER__
 EnvironmentFile=/etc/openclaw/runtime.env
+WorkingDirectory=/home/__OPENCLAW_USER__
 ExecStart=/usr/local/sbin/openclaw-health-check
 RuntimeDirectory=openclaw-health
 RuntimeDirectoryMode=0700

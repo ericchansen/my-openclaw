@@ -3,9 +3,10 @@ Description=Periodic OpenClaw runtime health checks
 
 [Timer]
 OnBootSec=5m
-OnUnitActiveSec=15m
-AccuracySec=1m
-RandomizedDelaySec=1m
+OnCalendar=*:0/15
+Persistent=true
+AccuracySec=30s
+RandomizedDelaySec=30s
 Unit=openclaw-health.service
 
 [Install]

@@ -15,12 +15,26 @@ OpenClaw cron owns precise agent and command jobs. Long-running deterministic wa
 The local health check emits one bounded redacted JSON record to syslog `local6`. Azure Monitor collects that facility and alerts on:
 
 - VM availability;
-- missing health records;
-- gateway/service/config/channel/security/secrets/cron/task failures;
+- health records missing for 50 minutes;
+- the same actionable gateway, channel, security, secrets, cron, or task failure present
+  in two records separated by at least ten minutes;
 - stale or failed backups;
 - disk use at 75%, 85%, and 92%.
 
-It records counts and booleans only. It does not send prompts, responses, channel IDs, credentials, or raw audit findings to Log Analytics.
+It records counts, booleans, bounded durations, and stable redacted reason categories. It
+does not send prompts, responses, channel IDs, credentials, response bodies, or raw audit
+findings to Log Analytics. The endpoint probe retries three times before failing. Isolated
+endpoint probe failures and generic diagnostic-command failures remain queryable but do
+not page by themselves.
+
+Cron scheduler availability is separate from stored job results. Azure considers only
+enabled jobs with at least two consecutive execution errors whose last run is within two
+hours; an old daily-job failure no longer reports the scheduler unhealthy until the next
+day.
+
+The health timer uses a fixed 15-minute calendar schedule with missed-run recovery.
+Persistent journald storage is capped at 512 MiB and 30 days so service/timer evidence
+survives reboot without unbounded disk growth.
 
 Manual checks:
 
@@ -74,6 +88,10 @@ Before applying a stable update:
 
 Do not automatically install repository `main`, prerelease, or an unbenchmarked model/runtime.
 The runtime installer sets `NEEDRESTART_MODE=l`; package maintenance may report pending restarts but must not restart unrelated host services. Restart only the intended service in an operator-controlled window.
+On ARM64, Azure Monitor Agent may install its x86 compatibility loader under a physical
+`/lib64` directory. Ubuntu 24.04 package upgrades require merged `/usr`; the installer
+moves non-conflicting compatibility files to `/usr/lib64` and replaces `/lib64` with the
+canonical symlink before invoking apt. A conflicting destination fails closed.
 
 ## Incident Sequence
 

@@ -134,6 +134,11 @@ if (-not $DeployerPrincipalId -and -not $SkipCustomData) {
 
 $template = Join-Path $PSScriptRoot "infra\main.bicep"
 $subscriptionTemplate = Join-Path $PSScriptRoot "infra\main-subscription.bicep"
+$cloudInitAssetCheck = Join-Path $PSScriptRoot "scripts\sync-cloud-init-assets.ps1"
+& $cloudInitAssetCheck -Check
+if ($LASTEXITCODE -ne 0) {
+    throw "Generated cloud-init assets are not current."
+}
 $effectiveUbuntuImageVersion = $UbuntuImageVersion
 $effectiveVmSize = ""
 $effectiveOsDiskSizeGB = 0
