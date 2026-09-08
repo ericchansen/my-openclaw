@@ -6,3 +6,5 @@
 *.py text eol=lf
 *.conf text eol=lf
 *.b64 text eol=lf
+scripts/openclaw-otel-ready text eol=lf
+scripts/openclaw-telemetry-access text eol=lf

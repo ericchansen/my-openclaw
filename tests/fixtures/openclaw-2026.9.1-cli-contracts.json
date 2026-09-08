@@ -1,0 +1,91 @@
+{
+  "nativeCreate": {
+    "createdAt": "2026-09-01T12:00:00.000Z",
+    "archiveRoot": "openclaw-backup",
+    "archivePath": "/var/lib/openclaw-runtime/backup.tar.gz",
+    "dryRun": false,
+    "includeWorkspace": true,
+    "onlyConfig": false,
+    "verified": true,
+    "assets": [
+      {
+        "kind": "state",
+        "sourcePath": "/home/openclaw/.openclaw",
+        "archivePath": "payload/state"
+      }
+    ],
+    "skipped": [],
+    "skippedVolatileCount": 3
+  },
+  "nativeVerify": {
+    "ok": true,
+    "archivePath": "/var/lib/openclaw-runtime/backup.tar.gz",
+    "archiveRoot": "openclaw-backup",
+    "createdAt": "2026-09-01T12:00:00.000Z",
+    "runtimeVersion": "2026.9.1",
+    "assetCount": 1,
+    "entryCount": 4,
+    "symlinkCount": 0
+  },
+  "nativeRestore": {
+    "ok": true,
+    "archivePath": "/var/lib/openclaw-runtime/backup.tar.gz",
+    "targetPath": "/var/lib/openclaw-runtime/restored",
+    "archiveRoot": "openclaw-backup",
+    "createdAt": "2026-09-01T12:00:00.000Z",
+    "runtimeVersion": "2026.9.1",
+    "assetCount": 1,
+    "entryCount": 4,
+    "symlinkCount": 0,
+    "warnings": [
+      "Activation remains an offline operator step."
+    ]
+  },
+  "sqliteCreate": {
+    "ok": true,
+    "snapshotPath": "/var/lib/openclaw-runtime/sqlite/2026-09-01T12-00-00Z-main",
+    "manifest": {
+      "schemaVersion": 1,
+      "snapshotId": "2026-09-01T12-00-00Z-main",
+      "createdAt": "2026-09-01T12:00:00.000Z",
+      "database": {
+        "role": "agent",
+        "agentId": "main",
+        "basename": "openclaw-agent.sqlite",
+        "userVersion": 19
+      },
+      "artifact": {
+        "path": "database.sqlite",
+        "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "sizeBytes": 4096
+      }
+    }
+  },
+  "agentsList": [
+    {
+      "id": "main",
+      "workspace": "/home/openclaw/.openclaw/workspace",
+      "agentDir": "/home/openclaw/.openclaw/agents/main/agent",
+      "bindings": 1,
+      "isDefault": true
+    },
+    {
+      "id": "orchestrator",
+      "workspace": "/home/openclaw/.openclaw/workspace-orchestrator",
+      "agentDir": "/home/openclaw/.openclaw/agents/orchestrator/agent",
+      "bindings": 0,
+      "isDefault": false
+    }
+  ],
+  "gatewayStopped": {
+    "service": {
+      "loaded": true,
+      "runtime": {
+        "status": "stopped"
+      }
+    },
+    "rpc": {
+      "ok": false
+    }
+  }
+}

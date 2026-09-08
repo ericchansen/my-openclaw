@@ -1,0 +1,33 @@
+{
+  "protocolVersion": 1,
+  "openclawVersion": "2026.9.2",
+  "targetType": "plugin",
+  "targetName": "diagnostics-otel",
+  "sourcePath": "/var/lib/openclaw-policy-fixture/local-copy",
+  "sourcePathKind": "directory",
+  "source": {
+    "kind": "local-path",
+    "authority": "user",
+    "mutable": true,
+    "network": false
+  },
+  "origin": {
+    "type": "plugin-package",
+    "packageName": "@openclaw/diagnostics-otel",
+    "version": "2026.9.2"
+  },
+  "request": {
+    "kind": "plugin-dir",
+    "mode": "install",
+    "requestedSpecifier": "./diagnostics-otel"
+  },
+  "plugin": {
+    "pluginId": "diagnostics-otel",
+    "contentType": "package",
+    "packageName": "@openclaw/diagnostics-otel",
+    "version": "2026.9.2",
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

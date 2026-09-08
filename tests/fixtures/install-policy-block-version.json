@@ -1,0 +1,24 @@
+{
+  "protocolVersion": 1,
+  "openclawVersion": "2026.9.1",
+  "targetType": "skill",
+  "targetName": "future-skill",
+  "sourcePath": "/var/lib/openclaw-policy-fixture/future",
+  "sourcePathKind": "directory",
+  "source": {
+    "kind": "bundled",
+    "authority": "openclaw",
+    "mutable": false,
+    "network": false
+  },
+  "origin": {
+    "type": "bundled"
+  },
+  "request": {
+    "kind": "skill-install",
+    "mode": "install"
+  },
+  "skill": {
+    "installId": "bundled"
+  }
+}

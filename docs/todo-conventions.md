@@ -54,9 +54,9 @@ openclaw tasks audit
 openclaw tasks cancel <task-id>
 ```
 
-Official reference: [Tasks](https://docs.openclaw.ai/tools/tasks).
+Official reference: [Tasks](https://docs.openclaw.ai/automation/tasks).
 
-Use task records for current state and audit evidence. Put durable follow-up in `TODO.md`; use cron for schedules.
+Use task records for current state and audit evidence. Put durable follow-up in `TODO.md`; use automations for schedules.
 
 ## Parent Ownership
 

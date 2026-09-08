@@ -1,0 +1,25 @@
+{
+  "protocolVersion": 1,
+  "openclawVersion": "2026.9.2",
+  "targetType": "skill",
+  "targetName": "marketplace-skill",
+  "sourcePath": "/var/lib/openclaw-policy-fixture/clawhub",
+  "sourcePathKind": "directory",
+  "source": {
+    "kind": "clawhub",
+    "authority": "openclaw",
+    "mutable": false,
+    "network": true
+  },
+  "origin": {
+    "type": "clawhub"
+  },
+  "request": {
+    "kind": "skill-install",
+    "mode": "install",
+    "requestedSpecifier": "marketplace-skill"
+  },
+  "skill": {
+    "installId": "clawhub"
+  }
+}

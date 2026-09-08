@@ -1,0 +1,27 @@
+{
+  "agents": {
+    "entries": {
+      "main": {
+        "sandbox": {"mode": "off"},
+        "tools": {"profile": "full", "exec": {"mode": "full", "applyPatch": {"workspaceOnly": false}}, "fs": {"workspaceOnly": false}, "elevated": {"enabled": true}},
+        "subagents": {"allowAgents": ["main", "orchestrator", "fitness"]}
+      },
+      "orchestrator": {
+        "sandbox": {"mode": "off"},
+        "tools": {"profile": "full", "exec": {"mode": "full", "applyPatch": {"workspaceOnly": false}}, "fs": {"workspaceOnly": false}, "elevated": {"enabled": true}},
+        "subagents": {"allowAgents": ["main", "orchestrator", "fitness"]}
+      },
+      "fitness": {
+        "sandbox": {"mode": "off"},
+        "tools": {"profile": "full", "exec": {"mode": "full", "applyPatch": {"workspaceOnly": false}}, "fs": {"workspaceOnly": false}, "elevated": {"enabled": true}},
+        "subagents": {"allowAgents": ["main", "orchestrator", "fitness"], "delegationMode": "prefer"}
+      }
+    }
+  },
+  "messages": {"groupChat": {"visibleReplies": "automatic"}},
+  "tools": {
+    "sessions": {"visibility": "all"},
+    "agentToAgent": {"enabled": true, "allow": ["main", "orchestrator", "fitness"]},
+    "subagents": {"tools": {"deny": []}}
+  }
+}

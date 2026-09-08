@@ -11,24 +11,44 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$VerifiedSnapshotId,
     [Parameter(Mandatory = $true)]
+    [string]$VerifiedBackupArchive,
+    [Parameter(Mandatory = $true)]
     [string]$KeyVaultName,
     [Parameter(Mandatory = $true)]
     [string]$StorageAccountName,
     [string]$StorageContainerName = "openclaw-backups",
-    [switch]$SkipGatewayRestart
+    [switch]$SkipGatewayRestart,
+    [switch]$UseTailscaleSsh
 )
 
 $ErrorActionPreference = "Stop"
+if ($SkipGatewayRestart) {
+    throw "-SkipGatewayRestart is incompatible with the validated active-host updater."
+}
 $hostName = ($VmHost -replace '^.*@', '').Trim('[', ']')
 $sshTarget = if ($VmHost.Contains("@")) { $VmHost } else { "$AdminUsername@$VmHost" }
 if (-not (Get-Command az -ErrorAction SilentlyContinue)) { throw "Azure CLI is required." }
-if (-not (Test-Path -LiteralPath $SshKeyPath)) { throw "SSH key not found: $SshKeyPath" }
+if (-not $UseTailscaleSsh -and -not (Test-Path -LiteralPath $SshKeyPath)) {
+    throw "SSH key not found: $SshKeyPath"
+}
 if (-not (Test-Path -LiteralPath $KnownHostsFile)) { throw "Known hosts file not found: $KnownHostsFile" }
 & ssh-keygen -F $hostName -f $KnownHostsFile *> $null
 if ($LASTEXITCODE -ne 0) {
     throw "No verified host key for '$hostName' in $KnownHostsFile. Verify it out of band and add it with ssh-keyscan."
 }
-$sshArgs = @("-i", $SshKeyPath, "-o", "StrictHostKeyChecking=yes", "-o", "UserKnownHostsFile=$KnownHostsFile")
+$sshArgs = @(
+    "-o", "BatchMode=yes",
+    "-o", "StrictHostKeyChecking=yes",
+    "-o", "UserKnownHostsFile=$KnownHostsFile"
+)
+if (-not $UseTailscaleSsh) {
+    $sshArgs = @("-i", $SshKeyPath) + $sshArgs
+}
+
+function ConvertTo-PosixShellLiteral {
+    param([Parameter(Mandatory = $true)][string]$Value)
+    return "'" + ($Value -replace "'", "'\''") + "'"
+}
 
 $vm = & az vm show `
     --resource-group $ResourceGroupName `
@@ -67,44 +87,105 @@ if (
 }
 
 $root = Split-Path -Parent $PSScriptRoot
-$assets = @(
-    "$root\config\openclaw-gateway.service",
-    "$root\config\openclaw-backup.service",
-    "$root\config\openclaw-backup.timer",
-    "$root\config\openclaw-health.service",
-    "$root\config\openclaw-health.timer",
-    "$root\config\openclaw-journald.conf",
-    "$PSScriptRoot\install-openclaw-runtime.sh",
-    "$PSScriptRoot\openclaw-backup.sh",
-    "$PSScriptRoot\openclaw-restore-verify.sh",
-    "$PSScriptRoot\openclaw-health-check.sh",
-    "$PSScriptRoot\openclaw-keyvault-resolver.py",
-    "$PSScriptRoot\openclaw-gateway-launch.py",
-    "$PSScriptRoot\openclaw-gog-launch.py",
-    "$PSScriptRoot\openclaw-mcp-launch.py"
-)
-foreach ($asset in $assets) {
-    if (-not (Test-Path -LiteralPath $asset)) { throw "Missing asset: $asset" }
-}
+& (Join-Path $PSScriptRoot "sync-cloud-init-assets.ps1") -Check
+if ($LASTEXITCODE -ne 0) { throw "Runtime assets are stale." }
+$bundle = [IO.File]::ReadAllText((Join-Path $root "infra\runtime-assets.tar.xz.b64")).Trim()
+$bundleHash = [Convert]::ToHexString(
+    [Security.Cryptography.SHA256]::HashData([Convert]::FromBase64String($bundle))
+).ToLowerInvariant()
 
-$remoteDir = ".cache/openclaw-runtime-apply"
-& ssh @sshArgs $sshTarget "install -d -m 0700 '$remoteDir'"
-if ($LASTEXITCODE -ne 0) { throw "Failed to create remote staging directory." }
-& scp @sshArgs @assets "${sshTarget}:$remoteDir/"
-if ($LASTEXITCODE -ne 0) { throw "Failed to upload runtime assets." }
+# Stream the reviewed bundle directly into sudo; never execute from a runtime-user path.
+$stageProgram = @'
+import base64, hashlib, io, os, re, shutil, stat, sys, tarfile, tempfile
+from pathlib import Path
+
+if os.geteuid() != 0:
+    raise RuntimeError("Runtime staging requires root")
+root = Path("/var/lib/openclaw-runtime")
+for directory in [*reversed(root.parents), root]:
+    if directory == root and not directory.exists():
+        directory.mkdir(mode=0o755)
+    info = directory.lstat()
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
+        raise RuntimeError("Unsafe runtime staging parent")
+encoded = sys.stdin.buffer.read(4 * 1024 * 1024 + 1)
+if len(encoded) > 4 * 1024 * 1024:
+    raise ValueError("Runtime bundle exceeds staging limit")
+data = base64.b64decode(encoded.strip(), validate=True)
+if hashlib.sha256(data).hexdigest() != sys.argv[1]:
+    raise ValueError("Runtime bundle checksum mismatch")
+assets = {}
+with tarfile.open(fileobj=io.BytesIO(data), mode="r:xz") as archive:
+    for item in archive:
+        if (not item.isfile() or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", item.name)
+                or item.name in assets or item.size > 1024 * 1024):
+            raise ValueError("Unsafe runtime asset")
+        assets[item.name] = archive.extractfile(item).read()
+if not {"install-openclaw-runtime.sh", "openclaw-update.sh",
+        "openclaw-provision-sandbox-images.sh"} <= assets.keys():
+    raise ValueError("Incomplete runtime bundle")
+stage = Path(tempfile.mkdtemp(prefix="apply-", dir=root))
+try:
+    for name, content in assets.items():
+        path = stage / name
+        with path.open("xb") as output:
+            output.write(content)
+        path.chmod(0o400)
+        info = path.lstat()
+        if info.st_uid != 0 or stat.S_IMODE(info.st_mode) != 0o400 or path.read_bytes() != content:
+            raise RuntimeError("Runtime staging verification failed")
+    info = stage.lstat()
+    if info.st_uid != 0 or stat.S_IMODE(info.st_mode) != 0o700:
+        raise RuntimeError("Unsafe runtime staging directory")
+except BaseException:
+    shutil.rmtree(stage)
+    raise
+print(stage)
+'@
+$stageCommand = "sudo -n python3 -c $(ConvertTo-PosixShellLiteral $stageProgram) $bundleHash"
+$stagingOutput = @($bundle | & ssh @sshArgs $sshTarget $stageCommand)
+if ($LASTEXITCODE -ne 0 -or $stagingOutput.Count -ne 1 -or
+    $stagingOutput[0] -notmatch '^/var/lib/openclaw-runtime/apply-[a-z0-9_]+$') {
+    throw "Failed to establish verified root-owned runtime staging."
+}
+$remoteDir = $stagingOutput[0]
+
+$manifestPath = Join-Path $root "config\runtime-versions.json"
+if (-not (Test-Path -LiteralPath $manifestPath)) {
+    throw "Missing runtime manifest: $manifestPath"
+}
+$versions = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 
 $installArgs = @(
     "sudo", "bash", "$remoteDir/install-openclaw-runtime.sh",
-    "--asset-dir", "/home/$AdminUsername/$remoteDir",
+    "--asset-dir", $remoteDir,
     "--user", $AdminUsername,
     "--key-vault", $KeyVaultName,
     "--storage-account", $StorageAccountName,
-    "--storage-container", $StorageContainerName
+    "--storage-container", $StorageContainerName,
+    "--openclaw-version", $versions.openclaw.version,
+    "--openclaw-integrity", $versions.openclaw.npmIntegrity,
+    "--diagnostics-otel-version", $versions.packages.'@openclaw/diagnostics-otel'.version,
+    "--diagnostics-otel-integrity", $versions.packages.'@openclaw/diagnostics-otel'.npmIntegrity,
+    "--node-version", $versions.node.version,
+    "--node-sha256", $versions.node.linuxArm64Sha256,
+    "--otel-version", $versions.otelCollectorContrib.version,
+    "--otel-url", $versions.otelCollectorContrib.linuxArm64Url,
+    "--otel-sha256", $versions.otelCollectorContrib.linuxArm64Sha256,
+    "--copilot-version", $versions.packages.'@github/copilot'.version,
+    "--copilot-integrity", $versions.packages.'@github/copilot'.npmIntegrity,
+    "--mcp-ebird-version", $versions.packages.'@pondlog/mcp-ebird'.version,
+    "--mcp-ebird-integrity", $versions.packages.'@pondlog/mcp-ebird'.npmIntegrity,
+    "--mcp-pondlog-version", $versions.packages.'@pondlog/mcp-pondlog'.version,
+    "--mcp-pondlog-integrity", $versions.packages.'@pondlog/mcp-pondlog'.npmIntegrity,
+    "--sandbox-source-commit", $versions.upstream.commit,
+    "--sandbox-archive-url", $versions.upstream.archiveUrl,
+    "--sandbox-archive-sha256", $versions.upstream.archiveSha256,
+    "--sandbox-browser-contract", $versions.sandbox.browserContract,
+    "--verified-backup", $VerifiedBackupArchive,
+    "--snapshot-evidence", $VerifiedSnapshotId
 )
-if ($SkipGatewayRestart) {
-    $installArgs += "--skip-gateway-restart"
-}
-$remoteCommand = ($installArgs | ForEach-Object { "'" + ($_ -replace "'", "'\''") + "'" }) -join " "
+$remoteCommand = ($installArgs | ForEach-Object { ConvertTo-PosixShellLiteral ([string]$_) }) -join " "
 & ssh @sshArgs $sshTarget $remoteCommand
 if ($LASTEXITCODE -ne 0) { throw "Runtime installer failed." }
 Write-Host "Runtime assets applied successfully." -ForegroundColor Green

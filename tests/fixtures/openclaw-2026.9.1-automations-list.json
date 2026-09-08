@@ -1,0 +1,51 @@
+{
+  "jobs": [
+    {
+      "id": "fixture-job-1",
+      "name": "sanitized-fixture",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 9 * * 1",
+        "tz": "UTC",
+        "staggerMs": 0
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "fixture content must be removed",
+        "model": "github-copilot/gpt-5.6-sol",
+        "fallbacks": [
+          "github-copilot/claude-sonnet-5"
+        ],
+        "thinking": "high",
+        "timeoutSeconds": 900,
+        "lightContext": true
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "telegram",
+        "to": "fixture-destination",
+        "bestEffort": false
+      },
+      "failureAlert": {
+        "after": 2,
+        "cooldownMs": 3600000,
+        "includeSkipped": false,
+        "mode": "announce",
+        "channel": "telegram",
+        "to": "fixture-alert-destination"
+      },
+      "state": {
+        "lastRunStatus": "ok"
+      }
+    }
+  ],
+  "snapshotRevision": "fixture",
+  "total": 1,
+  "offset": 0,
+  "limit": 50,
+  "hasMore": false,
+  "nextOffset": null
+}

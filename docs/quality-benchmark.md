@@ -15,7 +15,7 @@ Select 10–20 real requests that previously failed or required substantial corr
 - context pruning/long-session behavior;
 - tool discovery and correct tool use;
 - channel-safe response behavior;
-- tasks versus cron semantics;
+- tasks versus automation semantics;
 - latency and timeout handling;
 - explicit model fallback observability.
 
@@ -37,7 +37,7 @@ Score each dimension 0–4 using evidence:
 | Context | loses prior requirements | one recoverable miss | retains/prunes correctly |
 | Tool use | unsafe/wrong | works with waste | correct, safe, efficient |
 | Channel safety | leak/wrong destination | unclear | correct audience and privacy |
-| Task/cron | wrong primitive | works with caveat | correct durable primitive |
+| Task/automation | wrong primitive | works with caveat | correct durable primitive |
 | Latency | timeout/no result | slow but bounded | responsive within target |
 | Fallback | silent/broken | fallback works | explicit and observable |
 
@@ -67,7 +67,7 @@ Change one variable at a time:
 5. Record exact selected model, fallback used, tokens/context, latency, errors, and score evidence.
 6. Investigate regressions before averaging them away.
 
-Test pruning, Tool Search, QMD, Active Memory, and model promotion as separate experiments. Do not combine a model change with a memory/config change.
+Test pruning, Tool Search, builtin retrieval, Active Memory, and model promotion as separate experiments. Do not combine a model change with a memory/config change.
 
 ## Promotion Gate
 

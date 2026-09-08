@@ -1,134 +1,117 @@
-# Operations and Rollback
+# Operations and rollback
 
-## Service Ownership
+Use the exact official release and integrity values in
+[runtime-versions.json](../config/runtime-versions.json), currently OpenClaw 2026.9.2.
+Systemd owns the Gateway, backup/health timers, and deployed OTel collector.
+Native OpenClaw automations own scheduled jobs; do not create duplicate schedulers.
 
-Systemd owns:
+## Health and incidents
 
-- `openclaw-gateway.service`
-- `openclaw-backup.timer` / `openclaw-backup.service`
-- `openclaw-health.timer` / `openclaw-health.service`
-
-OpenClaw cron owns precise agent and command jobs. Long-running deterministic watchers should use a supervised service rather than an agent session or polling subagent.
-
-## Health
-
-The local health check emits one bounded redacted JSON record to syslog `local6`. Azure Monitor collects that facility and alerts on:
-
-- VM availability;
-- complete schema-v2 health records missing for 50 minutes;
-- the same actionable gateway, channel, security, secrets, cron, or task failure present
-  in two records separated by at least ten minutes and still present in the latest record;
-- stale or failed backups;
-- disk use at 75%, 85%, and 92%.
-
-It records counts, booleans, bounded durations, and stable redacted reason categories. It
-does not send prompts, responses, channel IDs, credentials, response bodies, or raw audit
-findings to Log Analytics. The endpoint probe retries three times before failing. Isolated
-endpoint probe failures and generic diagnostic-command failures remain queryable but do
-not page by themselves.
-
-Cron scheduler availability is separate from stored job results. Azure considers only
-enabled jobs with at least two consecutive execution errors whose last run is within two
-hours; an old daily-job failure no longer reports the scheduler unhealthy until the next
-day.
-
-The health timer uses a fixed 15-minute calendar schedule with missed-run recovery.
-Persistent journald storage is capped at 512 MiB and 30 days so service/timer evidence
-survives reboot without unbounded disk growth.
-
-Manual checks:
+Run diagnostics as the configured runtime user; keep raw output private:
 
 ```bash
 curl --fail http://127.0.0.1:18789/health
-openclaw status --json
+openclaw config validate
 openclaw doctor --lint --json
 openclaw channels status --probe --json
 openclaw security audit --json
 openclaw secrets audit --allow-exec --check --json
-openclaw cron status --json
+openclaw automations status --json
+openclaw automations list --all --json
 openclaw tasks audit --json
-systemctl show openclaw-gateway -p ActiveState -p Result -p NRestarts
+openclaw tasks list --runtime subagent --json
+systemctl status openclaw-gateway openclaw-otel-collector openclaw-backup.timer openclaw-health.timer
 ```
 
-Use `/health`; do not use a chat-completions route as a monitor because it can create sessions and invoke a model.
+Use `/health`, not a model-backed completion route. A healthy endpoint is not proof
+of a working conversation: force the [application canary](availability-recovery.md#application-canary)
+and verify the affected real channel/tool. Check VM availability and capacity,
+inspect `journalctl -u openclaw-gateway --no-pager`, and preserve private diagnostics
+before restart. Inspect task/job history before retrying; never replay personal jobs
+merely to clear an alert.
 
-## Safe Configuration Change
+The [health helper](../scripts/openclaw-health-check.sh) emits bounded redacted
+records, including early capacity samples. Unknown diagnostics remain unknown.
+Capacity alerts do not authorize disabling features or changing service budgets:
+capture process/cgroup attribution first. Health scheduling lives in [config](../config/);
+both infrastructure modes use the [shared monitoring module](../infra/monitoring.bicep).
 
-1. Confirm the active file with `openclaw config file`.
-2. Create a verified backup and a succeeded managed-disk snapshot of the current OS disk; record its resource ID.
-3. Inspect installed help/schema.
-4. Build the smallest JSON5 patch; never replace the live channel configuration with the template.
-5. Run `openclaw config patch --file <patch> --dry-run`.
-6. Run `openclaw config validate`.
-7. Apply one major variable at a time.
-8. Restart only after validation.
-9. Exercise the affected real channel/tool behavior.
-10. Restore the last-known-good file immediately on validation/startup regression.
+Task settlement checks cover visible terminal subagent tasks with unfinished
+notification delivery, not hidden queue corruption. The helper's
+`OPENCLAW_TASK_SETTLEMENT_MAX_AGE_SECONDS` defaults to 2400 (allowed 60–3600).
+Preserve the margin over the upstream
+[30-minute required-delivery window](https://github.com/openclaw/openclaw/blob/v2026.9.2/src/agents/subagents/registry/subagent-registry-helpers.ts).
+An empty task inventory or passing canary cannot establish that old task delivery
+is repaired; malformed/incomplete inventories fail closed.
 
-Invalid config exits with status 78 and the hardened service does not restart-loop it.
+## Safe configuration changes
 
-## Stable Updates
+1. Locate the active file with `openclaw config file`; preserve it and its ownership.
+2. Create a verified backup and succeeded current-OS-disk snapshot
+   using [the recovery procedure](backup-restore.md#pre-change-recovery-point).
+3. Inspect installed help/schema and prepare the smallest reviewed patch.
+4. Dry-run with `openclaw config patch --file <patch> --dry-run`, then apply through
+   the supported CLI and run `openclaw config validate` before restart.
+5. Change one major variable at a time; compare native automation status/list
+   before and after, then verify the originating conversation, affected tools,
+   scheduled execution, and forced canary after activation.
 
-Weekly:
+Do not replace live channels with a template. Review identities, owner command
+grants, agent routing, plugin allowlist additions, and model overrides separately.
+Preserve existing approved family configuration; future identity/sharing changes
+need explicit review, not an implicit grant from this upgrade.
+For the current production model use the prerequisite-gated [Astra overlay](astra-model.md).
 
-```bash
-openclaw update status --json
-openclaw update --dry-run --json
-```
+## Stable updates
 
-Before applying a stable update:
+Existing-host [infrastructure deployment](../deploy.ps1) is snapshot-guarded and
+refreshes monitoring only; it does not update OpenClaw or mutate live networking.
+Inspect `openclaw update status --json` and `openclaw update --dry-run --json`.
+Use [apply-runtime.ps1](../scripts/apply-runtime.ps1) for active custom-systemd
+hosts; it invokes [openclaw-update](../scripts/openclaw-update.sh) with recovery
+evidence. Never substitute a bare global npm update, mutable tag, or onboarding.
+Runtime apply streams the freshness-checked bundle directly to a root process,
+verifies its SHA-256, and stages regular files beneath root-owned, non-writable
+ancestors. The private staging directory is retained for delayed installer
+callbacks and recovery; runtime-user home directories are never execution sources.
 
-1. create and verify a backup;
-2. record Node/OpenClaw/QMD/Copilot versions;
-3. check release notes and runtime requirements;
-4. update only the intended package/runtime;
-5. run config validation and Doctor;
-6. cold-restart the gateway;
-7. test `/health`, model access, channels, Gmail watch, one deterministic job, one model job, and native child handoff.
+The updater re-verifies the native archive, checks exact package pins, and shares
+the stable root-owned `/etc/openclaw/maintenance.lock` with backup/health readers.
+Maintenance takes an exclusive lock; contention exits before mutation.
+Never delete/replace that inode or run unlocked when it is missing or unsafe.
 
-Do not automatically install repository `main`, prerelease, or an unbenchmarked model/runtime.
-The runtime installer sets `NEEDRESTART_MODE=l`; package maintenance may report pending restarts but must not restart unrelated host services. Restart only the intended service in an operator-controlled window.
-On ARM64, Azure Monitor Agent may install its x86 compatibility loader under a physical
-`/lib64` directory. Ubuntu 24.04 package upgrades require merged `/usr`; the installer
-moves non-conflicting compatibility files to `/usr/lib64` and replaces `/lib64` with the
-canonical symlink before invoking apt. A conflicting destination fails closed.
+Only OpenClaw timers are paused. Existing backup/health work and visible tasks
+drain boundedly; an in-progress backup is not killed. Pinned sandbox-image
+provisioning runs before Gateway shutdown. A pre-shutdown failure leaves the
+working Gateway unchanged and restores previously active timers.
 
-## Incident Sequence
+Package mutation, update repair, config validation, and Doctor run while stopped.
+The stopped-runtime installer applies assets under the same lock. Start once,
+prove readiness and the exact running version, then resume timers after lock
+release. Failure after mutation deliberately leaves Gateway and timers stopped
+for operator recovery: **there is no automatic package/state rollback**.
+Do not restart Docker or unrelated host services; recreate only OpenClaw-owned
+containers in an approved window.
 
-1. Check Azure VM availability and disk pressure.
-2. Inspect `systemctl status` and `journalctl -u openclaw-gateway`.
-3. Run `/health`, config validation, Doctor, and redacted audit summaries.
-4. Check task/cron history rather than starting duplicate work.
-5. Preserve logs and diagnostics before cleanup/restart.
-6. Use the smallest reversible fix.
-7. Verify the originating Telegram/Discord/Gmail behavior, not only HTTP status.
+## Rollback and service failures
 
-Existing-host infrastructure and runtime scripts require the managed-disk snapshot resource ID and verify that it belongs to the current VM OS disk before mutation.
+For config/unit rollback, restore the exact pre-change files and ownership,
+reload systemd if units changed, validate, and start once. Recheck real channels,
+tools, jobs, and timers. Package, state, and disk recovery are separate
+[rollback layers](backup-restore.md#rollback-layers); a downgrade does not undo SQLite migration.
 
-## Rollback
+The [Gateway unit](../config/openclaw-gateway.service) uses `Restart=always` because
+a config reload can exit successfully. Exit 78 blocks invalid-config restart loops;
+an explicit operator stop stays stopped. Do not replace this with `on-failure`.
+Keep the deployed metadata collector and [launcher](../scripts/openclaw-gateway-launch.py)
+guards intact; inspect collector readiness rather than removing telemetry to start.
+Future private-network/NAT cutover is deferred, not an incident-recovery prerequisite.
 
-Configuration/unit rollback:
+## Validation
 
-1. restore the exact pre-change file or unit;
-2. restore owner/mode;
-3. `systemctl daemon-reload` when units changed;
-4. run `openclaw config validate`;
-5. restart once;
-6. re-probe channels and scheduled work.
-
-Whole-VM rollback:
-
-1. stop mutation and identify the pre-change managed-disk snapshot;
-2. preserve the current disk for forensics;
-3. follow Azure's supported disk swap/recovery procedure;
-4. boot privately;
-5. verify SecretRefs, gateway, channels, Gmail, cron, tasks, and backup timers before normal use.
-
-Never rerun onboarding as a rollback mechanism.
-
-## Known Deferred Work
-
-- Public IP and SSH exposure remain unchanged in this pass.
-- Storage and Key Vault endpoints remain network-public but require authenticated authorization; private endpoints/firewalls are deferred.
-- The VM retains subscription-wide Contributor by explicit owner decision.
-- Full OpenClaw archive restore is unavailable in 2026.7.1; use non-destructive verification and the managed-disk recovery point.
+Run `pwsh scripts/test-repository.ps1` from the repository. Exact-runtime checks use
+isolated state, not production. Windows unit verification uses WSL and
+`systemd-analyze`; `-SkipSystemdValidation` is an explicit test-only skip, not a pass.
+Regenerate changed bootstrap assets with
+[sync-cloud-init-assets.ps1](../scripts/sync-cloud-init-assets.ps1).
+Repository checks are not live acceptance; follow [availability acceptance](availability-recovery.md#acceptance-and-remaining-boundaries).

@@ -1,0 +1,23 @@
+{
+  "agents": {
+    "defaults": {
+      "memorySearch": {
+        "enabled": true,
+        "provider": "github-copilot"
+      }
+    },
+    "list": [
+      {
+        "id": "main",
+        "default": true
+      },
+      {
+        "id": "orchestrator"
+      }
+    ]
+  },
+  "memory": {
+    "backend": "builtin",
+    "citations": "auto"
+  }
+}

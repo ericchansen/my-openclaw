@@ -1,0 +1,44 @@
+name: Validate deployment
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repository:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Read reviewed Node version
+        id: runtime
+        shell: bash
+        run: echo "node=$(node -p "require('./config/runtime-versions.json').node.version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ steps.runtime.outputs.node }}
+      - name: Require existing validation tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          for tool in pwsh python3 jq bash systemd-analyze docker az; do
+            command -v "$tool"
+          done
+          docker info >/dev/null
+          if ! az bicep version; then
+            az bicep install
+          fi
+      - name: Validate repository and pinned runtime
+        shell: pwsh
+        run: ./scripts/test-repository.ps1

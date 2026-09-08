@@ -1,0 +1,55 @@
+[Unit]
+Description=OpenClaw local OpenTelemetry collector
+After=network-online.target
+Wants=network-online.target
+Before=openclaw-gateway.service
+
+[Service]
+Type=simple
+User=openclaw-otel
+Group=openclaw-otel
+RuntimeDirectory=openclaw-otel
+RuntimeDirectoryMode=0755
+StateDirectory=openclaw-otel
+StateDirectoryMode=0750
+LogsDirectory=openclaw-telemetry
+LogsDirectoryMode=0750
+UMask=0027
+Environment=OPENCLAW_OTEL_CONTENT_SAMPLE_PERCENT=10
+Environment=OPENCLAW_OTEL_METADATA_OUTPUT_PATH=/var/log/openclaw-telemetry/metadata.jsonl
+Environment=OPENCLAW_OTEL_CONTENT_OUTPUT_PATH=/var/log/openclaw-telemetry/content.jsonl
+ExecStartPre=+/usr/local/sbin/openclaw-telemetry-access
+ExecStartPre=/usr/local/libexec/otelcol-openclaw validate --config=/etc/openclaw/otelcol-openclaw.yaml
+ExecStart=/usr/local/libexec/otelcol-openclaw --config=/etc/openclaw/otelcol-openclaw.yaml
+ExecStartPost=/usr/local/sbin/openclaw-otel-ready mark
+ExecStopPost=/usr/local/sbin/openclaw-otel-ready clear
+Restart=on-failure
+RestartSec=10
+TimeoutStartSec=240
+TimeoutStopSec=20
+MemoryHigh=256M
+MemoryMax=512M
+MemorySwapMax=128M
+TasksMax=128
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/var/log/openclaw-telemetry /var/lib/openclaw-otel /run/openclaw-otel
+
+[Install]
+WantedBy=multi-user.target

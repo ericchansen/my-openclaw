@@ -1,0 +1,27 @@
+{
+  "protocolVersion": 1,
+  "openclawVersion": "2026.9.2",
+  "targetType": "plugin",
+  "targetName": "unreviewed-plugin",
+  "sourcePath": "/var/lib/openclaw-policy-fixture/unreviewed",
+  "sourcePathKind": "directory",
+  "source": {
+    "kind": "local-path",
+    "authority": "user",
+    "mutable": true,
+    "network": false
+  },
+  "origin": {
+    "type": "plugin-dir"
+  },
+  "request": {
+    "kind": "plugin-dir",
+    "mode": "install",
+    "requestedSpecifier": "./unreviewed"
+  },
+  "plugin": {
+    "pluginId": "unreviewed-plugin",
+    "contentType": "package",
+    "extensions": []
+  }
+}
