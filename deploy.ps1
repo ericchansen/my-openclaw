@@ -1,7 +1,5 @@
 param(
-    [Parameter(Mandatory = $true)]
-    [string]$SshPublicKeyPath,
-
+    [string]$SshPublicKeyPath = "",
     [string]$ResourceGroupName = "rg-openclaw",
     [string]$Location = "centralus",
     [string]$SubscriptionId = "",
@@ -19,268 +17,191 @@ param(
 $ErrorActionPreference = "Stop"
 
 function Invoke-Az {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string[]]$Arguments,
-        [switch]$Json
-    )
-
-    $output = & az @Arguments
+    param([Parameter(Mandatory)][string[]]$Arguments, [switch]$Json)
+    $output = @(& az @Arguments --only-show-errors 2>&1)
     if ($LASTEXITCODE -ne 0) {
-        throw "Azure CLI failed: az $($Arguments -join ' ')"
+        throw "Azure CLI operation failed; parameter values and response content were suppressed."
     }
-    if ($Json) {
-        return (($output -join "`n") | ConvertFrom-Json)
-    }
-    return $output
+    if (-not $Json) { return $output }
+    try { return (($output -join "`n") | ConvertFrom-Json -Depth 100) }
+    catch { throw "Azure CLI returned invalid JSON; response content was suppressed." }
 }
 
 function Assert-SnapshotMatchesDisk {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$SnapshotId,
-        [Parameter(Mandatory = $true)]
-        [string]$DiskId
+    param([string]$SnapshotId, [string]$DiskId)
+    if (-not $SnapshotId -or -not $DiskId) { throw "An existing-host update requires a verified OS-disk snapshot." }
+    $snapshot = Invoke-Az @("snapshot", "show", "--ids", $SnapshotId, "--output", "json") -Json
+    if ($snapshot.provisioningState -ne "Succeeded" -or
+        -not [string]::Equals($snapshot.creationData.sourceResourceId, $DiskId,
+            [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Snapshot is not a succeeded recovery point for the current VM OS disk."
+    }
+}
+
+function Get-UnsafeWhatIfChanges {
+    param([object[]]$Changes, [bool]$ExistingHost)
+    $monitorTypes = @(
+        "Microsoft.Resources/deployments",
+        "Microsoft.OperationalInsights/workspaces", "Microsoft.OperationalInsights/workspaces/tables",
+        "Microsoft.Insights/dataCollectionRules", "Microsoft.Insights/dataCollectionRuleAssociations",
+        "Microsoft.Insights/actionGroups", "Microsoft.Insights/metricAlerts", "Microsoft.Insights/scheduledQueryRules",
+        "Microsoft.Compute/virtualMachines/extensions"
     )
-
-    $snapshot = Invoke-Az -Arguments @(
-        "snapshot", "show",
-        "--ids", $SnapshotId,
-        "--output", "json"
-    ) -Json
-    if (
-        $snapshot.provisioningState -ne "Succeeded" -or
-        -not [string]::Equals(
-            [string]$snapshot.creationData.sourceResourceId,
-            $DiskId,
-            [System.StringComparison]::OrdinalIgnoreCase
-        )
-    ) {
-        throw "The verified snapshot is not a succeeded snapshot of the current VM OS disk."
-    }
-}
-
-if (-not (Get-Command az -ErrorAction SilentlyContinue)) {
-    throw "Azure CLI is required."
-}
-if (-not (Test-Path -LiteralPath $SshPublicKeyPath)) {
-    throw "SSH public key not found: $SshPublicKeyPath"
-}
-$sshKey = (Get-Content -LiteralPath $SshPublicKeyPath -Raw).Trim()
-if (-not $sshKey) {
-    throw "SSH public key file is empty: $SshPublicKeyPath"
-}
-if ($SubscriptionId) {
-    Invoke-Az -Arguments @("account", "set", "--subscription", $SubscriptionId, "--output", "none")
-}
-$account = Invoke-Az -Arguments @("account", "show", "--output", "json") -Json
-$SubscriptionId = $account.id
-Write-Host "Using subscription '$($account.name)' ($SubscriptionId)." -ForegroundColor DarkCyan
-
-$resourceGroupExists = [bool]::Parse(
-    [string](Invoke-Az -Arguments @(
-        "group", "exists",
-        "--subscription", $SubscriptionId,
-        "--name", $ResourceGroupName,
-        "--output", "tsv"
-    ))
-)
-$existingVm = $null
-if ($resourceGroupExists) {
-    $existingVm = Invoke-Az -Arguments @(
-        "vm", "list",
-        "--subscription", $SubscriptionId,
-        "--resource-group", $ResourceGroupName,
-        "--query", "[?name=='openclaw-vm'] | [0]",
-        "--output", "json"
-    ) -Json
-}
-if ($existingVm -and -not $SkipCustomData) {
-    $SkipCustomData = [System.Management.Automation.SwitchParameter]::new($true)
-    Write-Host (
-        "Detected existing VM 'openclaw-vm'; enabling snapshot-gated existing-VM mode."
-    ) -ForegroundColor Yellow
-}
-elseif (-not $existingVm -and $SkipCustomData) {
-    throw "-SkipCustomData requires an existing 'openclaw-vm' in the target resource group."
-}
-
-if (-not $DeployerPrincipalId -and -not $SkipCustomData) {
-    if ($account.user.type -eq "user") {
-        $resolvedPrincipal = Invoke-Az -Arguments @(
-            "ad", "signed-in-user", "show",
-            "--query", "id",
-            "--output", "tsv"
-        )
-    }
-    elseif ($account.user.type -eq "servicePrincipal") {
-        $DeployerPrincipalType = "ServicePrincipal"
-        $resolvedPrincipal = Invoke-Az -Arguments @(
-            "ad", "sp", "show",
-            "--id", $account.user.name,
-            "--query", "id",
-            "--output", "tsv"
-        )
-    }
-    else {
-        throw "Pass -DeployerPrincipalId for this Azure account type."
-    }
-    $DeployerPrincipalId = [string]($resolvedPrincipal | Select-Object -First 1)
-    $DeployerPrincipalId = $DeployerPrincipalId.Trim()
-    if (-not $DeployerPrincipalId) {
-        throw "Could not resolve the deployer principal. Pass -DeployerPrincipalId explicitly."
-    }
-}
-
-$template = Join-Path $PSScriptRoot "infra\main.bicep"
-$subscriptionTemplate = Join-Path $PSScriptRoot "infra\main-subscription.bicep"
-$cloudInitAssetCheck = Join-Path $PSScriptRoot "scripts\sync-cloud-init-assets.ps1"
-& $cloudInitAssetCheck -Check
-if ($LASTEXITCODE -ne 0) {
-    throw "Generated cloud-init assets are not current."
-}
-$effectiveUbuntuImageVersion = $UbuntuImageVersion
-$effectiveVmSize = ""
-$effectiveOsDiskSizeGB = 0
-if ($SkipCustomData) {
-    if (-not $VerifiedSnapshotId) {
-        throw "-VerifiedSnapshotId is required for existing-VM deployments."
-    }
-    $effectiveUbuntuImageVersion = [string]$existingVm.storageProfile.imageReference.version
-    $effectiveVmSize = [string]$existingVm.hardwareProfile.vmSize
-    $osDiskId = [string]$existingVm.storageProfile.osDisk.managedDisk.id
-    $osDisk = Invoke-Az -Arguments @(
-        "disk", "show",
-        "--ids", $osDiskId,
-        "--output", "json"
-    ) -Json
-    $effectiveOsDiskSizeGB = [int]$osDisk.diskSizeGb
-    if (
-        -not $effectiveUbuntuImageVersion -or
-        -not $effectiveVmSize -or
-        -not $osDiskId -or
-        $effectiveOsDiskSizeGB -le 0
-    ) {
-        throw "Could not determine the existing VM image, size, or OS disk size."
-    }
-    Assert-SnapshotMatchesDisk -SnapshotId $VerifiedSnapshotId -DiskId $osDiskId
-    Write-Host (
-        "Existing-VM mode preserves image '$effectiveUbuntuImageVersion', size " +
-        "'$effectiveVmSize', OS disk '$effectiveOsDiskSizeGB GiB', and existing NSG rules."
-    ) -ForegroundColor Yellow
-}
-$groupParameters = @(
-    "sshPublicKey=$sshKey",
-    "skipCustomData=$($SkipCustomData.IsPresent.ToString().ToLowerInvariant())",
-    "ubuntuImageVersion=$effectiveUbuntuImageVersion"
-)
-if ($SkipCustomData) {
-    $groupParameters += "vmSize=$effectiveVmSize"
-    $groupParameters += "osDiskSizeGB=$effectiveOsDiskSizeGB"
-}
-if ($DeployerPrincipalId) {
-    $groupParameters += "deployerPrincipalId=$DeployerPrincipalId"
-    $groupParameters += "deployerPrincipalType=$DeployerPrincipalType"
-}
-if ($MonitoringContactEmails.Count -gt 0) {
-    foreach ($email in $MonitoringContactEmails) {
-        if ($email -notmatch '^[A-Za-z0-9.!#$%&*+/=?^_`{|}~-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$') {
-            throw "Invalid monitoring contact email."
+    foreach ($change in $Changes) {
+        if ($change.changeType -in @("NoChange", "Ignore")) { continue }
+        $parts = ([string]$change.resourceId -split "(?i)/providers/")[-1].Trim("/").Split("/")
+        if ($parts.Count -lt 3 -or $parts.Count % 2 -ne 1) {
+            "Unknown resource identity in what-if"
+            continue
+        }
+        $type = $parts[0]
+        for ($i = 1; $i -lt $parts.Count; $i += 2) { $type += "/" + $parts[$i] }
+        if ($change.changeType -notin @("Create", "Modify")) {
+            "Unsupported/destructive what-if action: $($change.changeType) $type"
+        }
+        elseif (($ExistingHost -or $change.changeType -eq "Modify") -and $type -notin $monitorTypes) {
+            "Protected resource change: $($change.changeType) $type"
+        }
+        elseif ($type -eq "Microsoft.Compute/virtualMachines/extensions" -and $parts[-1] -ne "AzureMonitorLinuxAgent") {
+            "Only the Azure Monitor extension is managed by this deployment"
+        }
+        elseif ($change.changeType -eq "Modify" -and $type -eq "Microsoft.OperationalInsights/workspaces" -and
+            $change.before.properties.sku.name -ne $change.after.properties.sku.name) {
+            "Monitoring updates must preserve the existing workspace pricing tier"
         }
     }
-    $emailArray = "['" + ($MonitoringContactEmails -join "','") + "']"
-    $groupParameters += "monitoringContactEmails=$emailArray"
 }
 
-Write-Host "`n=== OpenClaw Azure VM Deployment ===" -ForegroundColor Cyan
-Write-Host "`n[1/7] Ensuring resource group '$ResourceGroupName' exists..."
-Invoke-Az -Arguments @(
-    "group", "create",
-    "--subscription", $SubscriptionId,
-    "--name", $ResourceGroupName,
-    "--location", $Location,
-    "--output", "none"
-)
-
-$groupBaseArgs = @(
-    "--subscription", $SubscriptionId,
-    "--resource-group", $ResourceGroupName,
-    "--template-file", $template,
-    "--parameters"
-) + $groupParameters
-
-Write-Host "`n[2/7] Validating resource-group deployment..."
-Invoke-Az -Arguments (@("deployment", "group", "validate") + $groupBaseArgs + @("--output", "none"))
-
-Write-Host "`n[3/7] Running resource-group what-if..."
-Invoke-Az -Arguments (@("deployment", "group", "what-if") + $groupBaseArgs)
-
-if (-not $Force) {
-    $continue = Read-Host "`nProceed with the resource-group deployment? (y/n)"
-    if ($continue -ne "y") {
-        Write-Host "Deployment cancelled."
-        exit 0
+function Write-Parameters {
+    param([hashtable]$Values, [string]$Path)
+    $parameters = @{}
+    foreach ($key in $Values.Keys) { $parameters[$key] = @{value = $Values[$key]} }
+    @{parameters = $parameters} | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $Path
+    if (-not $IsWindows) {
+        & chmod 0600 $Path
+        if ($LASTEXITCODE -ne 0) { throw "Could not protect deployment parameters." }
     }
 }
 
-Write-Host "`n[4/7] Deploying resource-group infrastructure..."
-$result = Invoke-Az -Arguments (
-    @("deployment", "group", "create") + $groupBaseArgs + @("--output", "json")
-) -Json
-$outputs = $result.properties.outputs
-$vmPrincipalId = $outputs.vmPrincipalId.value
-$existingBudgetStartDate = & az consumption budget show `
-    --subscription $SubscriptionId `
-    --budget-name "openclaw-monthly-budget" `
-    --query "timePeriod.startDate" `
-    --output tsv `
-    --only-show-errors 2>$null
-$budgetStartDate = if ($LASTEXITCODE -eq 0 -and $existingBudgetStartDate) {
-    ($existingBudgetStartDate | Select-Object -First 1).Trim()
+function Confirm-Deployment {
+    param([string]$Scope)
+    if (-not $Force -and (Read-Host "Apply the reviewed $Scope deployment? (y/n)") -ne "y") {
+        throw "Deployment cancelled."
+    }
+}
+
+function Get-GroupPreview {
+    param([string[]]$Arguments)
+    Invoke-Az (@("deployment", "group", "what-if") + $Arguments +
+        @("--no-pretty-print", "--result-format", "FullResourcePayloads", "-o", "json")) -Json
+}
+
+if (-not (Get-Command az -ErrorAction SilentlyContinue)) { throw "Azure CLI is required." }
+if ($SubscriptionId) { Invoke-Az @("account", "set", "--subscription", $SubscriptionId) | Out-Null }
+$account = Invoke-Az @("account", "show", "--output", "json") -Json
+$SubscriptionId = $account.id
+$groupExists = [bool]::Parse([string](Invoke-Az @("group", "exists", "-n", $ResourceGroupName, "--output", "tsv")))
+$existingVm = if ($groupExists) {
+    Invoke-Az @("vm", "list", "-g", $ResourceGroupName, "--query", "[?name=='openclaw-vm'] | [0]", "--output", "json") -Json
+} else { $null }
+if ($SkipCustomData -and -not $existingVm) { throw "-SkipCustomData requires an existing openclaw-vm." }
+if ($existingVm) {
+    Assert-SnapshotMatchesDisk $VerifiedSnapshotId $existingVm.storageProfile.osDisk.managedDisk.id
+    if ($DeployerPrincipalId) { throw "Existing-host mode does not change Key Vault or subscription permissions." }
+    $Location = $existingVm.location
+    if (-not $PSBoundParameters.ContainsKey("MonitoringContactEmails")) {
+        $groups = @(Invoke-Az @("monitor", "action-group", "list", "-g", $ResourceGroupName, "--output", "json") -Json |
+            Where-Object name -like "ag-openclaw-*")
+        if ($groups.Count -gt 1) { throw "Ambiguous OpenClaw action group; provide reviewed monitoring contacts explicitly." }
+        if ($groups.Count -eq 1) {
+            $group = $groups[0]
+            $otherReceivers = @($group.PSObject.Properties | Where-Object {
+                $_.Name -like "*Receivers" -and $_.Name -ne "emailReceivers" -and @($_.Value).Count -gt 0
+            })
+            if ($otherReceivers.Count -or -not $group.enabled) {
+                throw "Existing notification policy requires explicit review; it will not be replaced implicitly."
+            }
+            $MonitoringContactEmails = @($group.emailReceivers | ForEach-Object emailAddress)
+        }
+    }
+    $templateName = "main-existing.bicep"
+    $values = @{location=$Location; monitoringContactEmails=$MonitoringContactEmails}
 }
 else {
-    (Get-Date -Day 1).ToUniversalTime().ToString("yyyy-MM-01T00:00:00Z")
-}
-$subscriptionParameters = @(
-    "vmPrincipalId=$vmPrincipalId",
-    "budgetStartDate=$budgetStartDate"
-)
-if ($MonitoringContactEmails.Count -gt 0) {
-    $subscriptionParameters += "contactEmails=$emailArray"
-}
-$subscriptionBaseArgs = @(
-    "--subscription", $SubscriptionId,
-    "--location", $Location,
-    "--template-file", $subscriptionTemplate,
-    "--parameters"
-) + $subscriptionParameters
-
-Write-Host "`n[5/7] Validating subscription deployment..."
-Invoke-Az -Arguments (@("deployment", "sub", "validate") + $subscriptionBaseArgs + @("--output", "none"))
-
-Write-Host "`n[6/7] Running subscription what-if..."
-Invoke-Az -Arguments (@("deployment", "sub", "what-if") + $subscriptionBaseArgs)
-
-if (-not $Force) {
-    $continue = Read-Host "`nProceed with the subscription-wide deployment? (y/n)"
-    if ($continue -ne "y") {
-        Write-Host "Subscription deployment cancelled."
-        exit 0
+    if (-not $SshPublicKeyPath -or -not (Test-Path -LiteralPath $SshPublicKeyPath -PathType Leaf)) {
+        throw "A new VM requires -SshPublicKeyPath."
+    }
+    $sshKey = (Get-Content -LiteralPath $SshPublicKeyPath -Raw).Trim()
+    if (-not $sshKey) { throw "SSH public key is empty." }
+    if (-not $DeployerPrincipalId) {
+        if ($account.user.type -eq "user") {
+            $DeployerPrincipalId = [string](Invoke-Az @("ad", "signed-in-user", "show", "--query", "id", "-o", "tsv"))
+        }
+        elseif ($account.user.type -eq "servicePrincipal") {
+            $DeployerPrincipalType = "ServicePrincipal"
+            $DeployerPrincipalId = [string](Invoke-Az @("ad", "sp", "show", "--id", $account.user.name, "--query", "id", "-o", "tsv"))
+        }
+        else { throw "Provide -DeployerPrincipalId for this account type." }
+        if (-not $DeployerPrincipalId.Trim()) { throw "Could not resolve the deploying principal." }
+    }
+    & (Join-Path $PSScriptRoot "scripts\sync-cloud-init-assets.ps1") -Check
+    if ($LASTEXITCODE -ne 0) { throw "Generated runtime assets are stale." }
+    $templateName = "main.bicep"
+    $values = @{
+        location=$Location; sshPublicKey=$sshKey; ubuntuImageVersion=$UbuntuImageVersion
+        deployerPrincipalId=$DeployerPrincipalId.Trim(); deployerPrincipalType=$DeployerPrincipalType
+        monitoringContactEmails=$MonitoringContactEmails
     }
 }
+foreach ($email in $MonitoringContactEmails) {
+    try { $parsed = [System.Net.Mail.MailAddress]::new($email) }
+    catch { throw "Invalid monitoring contact email." }
+    if ($parsed.Address -ne $email) { throw "Use plain monitoring email addresses without display names." }
+}
 
-Write-Host "`n[7/7] Deploying subscription budget and RBAC..."
-$subResult = Invoke-Az -Arguments (
-    @("deployment", "sub", "create") + $subscriptionBaseArgs + @("--output", "json")
-) -Json
-
-Write-Host "`n=== Deployment Complete ===" -ForegroundColor Green
-Write-Host "VM Public IP:   $($outputs.vmPublicIp.value)"
-Write-Host "VM FQDN:        $($outputs.vmFqdn.value)"
-Write-Host "SSH Command:    $($outputs.sshCommand.value)"
-Write-Host "Key Vault:      $($outputs.keyVaultName.value)"
-Write-Host "Backup Storage: $($outputs.backupStorageAccountName.value)/$($outputs.backupContainerName.value)"
-Write-Host "Log Analytics:  $($outputs.logAnalyticsWorkspaceName.value)"
-Write-Host "Budget:         $($subResult.properties.outputs.budgetName.value)"
-Write-Host "Gateway:        $($outputs.gatewayNote.value)"
-Write-Host "`nFor an existing VM, apply canonical runtime assets with scripts\apply-runtime.ps1." -ForegroundColor Yellow
+$temp = Join-Path ([IO.Path]::GetTempPath()) ("openclaw-deploy-" + [guid]::NewGuid())
+New-Item -ItemType Directory -Path $temp | Out-Null
+if (-not $IsWindows) { & chmod 0700 $temp; if ($LASTEXITCODE -ne 0) { throw "Private staging failed." } }
+try {
+    $template = Join-Path $PSScriptRoot "infra\$templateName"
+    Invoke-Az @("bicep", "build", "--file", $template, "--stdout") | Out-Null
+    $parameters = Join-Path $temp "group.json"
+    Write-Parameters $values $parameters
+    if (-not $groupExists) {
+        Invoke-Az @("group", "create", "-n", $ResourceGroupName, "-l", $Location, "-o", "none") | Out-Null
+    }
+    $groupArgs = @("--subscription", $SubscriptionId, "--resource-group", $ResourceGroupName,
+        "--template-file", $template, "--parameters", "@$parameters")
+    Invoke-Az (@("deployment", "group", "validate") + $groupArgs + @("-o", "none")) | Out-Null
+    $preview = Get-GroupPreview $groupArgs
+    if ($null -eq $preview.changes) { throw "What-if returned no usable change inventory." }
+    $unsafe = @(Get-UnsafeWhatIfChanges $preview.changes ([bool]$existingVm))
+    if ($unsafe.Count) { throw ($unsafe -join "; ") }
+    $preview.changes | Select-Object changeType, resourceId | Format-Table -AutoSize
+    Confirm-Deployment "resource-group"
+    if ($existingVm) {
+        $current = Invoke-Az @("vm", "show", "-g", $ResourceGroupName, "-n", "openclaw-vm", "-o", "json") -Json
+        Assert-SnapshotMatchesDisk $VerifiedSnapshotId $current.storageProfile.osDisk.managedDisk.id
+    }
+    $result = Invoke-Az (@("deployment", "group", "create") + $groupArgs + @("-o", "json")) -Json
+    if ($existingVm) {
+        Write-Host "Monitoring updated. VM, networking, data stores and runtime were preserved."
+    }
+    else {
+        $budgets = @(Invoke-Az @("consumption", "budget", "list", "--subscription", $SubscriptionId, "-o", "json") -Json)
+        $budget = $budgets | Where-Object name -eq "openclaw-monthly-budget" | Select-Object -First 1
+        $start = if ($budget) { $budget.timePeriod.startDate } else { (Get-Date -Day 1).ToUniversalTime().ToString("yyyy-MM-01T00:00:00Z") }
+        $subParameters = Join-Path $temp "subscription.json"
+        Write-Parameters @{vmPrincipalId=$result.properties.outputs.vmPrincipalId.value; budgetStartDate=$start;
+            contactEmails=$MonitoringContactEmails} $subParameters
+        $subArgs = @("--subscription", $SubscriptionId, "--location", $Location, "--template-file",
+            (Join-Path $PSScriptRoot "infra\main-subscription.bicep"), "--parameters", "@$subParameters")
+        Invoke-Az (@("deployment", "sub", "validate") + $subArgs + @("-o", "none")) | Out-Null
+        Invoke-Az (@("deployment", "sub", "what-if") + $subArgs) | Out-Host
+        Confirm-Deployment "subscription budget and RBAC"
+        Invoke-Az (@("deployment", "sub", "create") + $subArgs + @("-o", "none")) | Out-Null
+        Write-Host "New VM deployed. Complete onboarding without copying a template over live channel configuration."
+    }
+    Write-Host "Use scripts\apply-runtime.ps1 for snapshot- and backup-guarded existing-host runtime updates."
+}
+finally { Remove-Item -LiteralPath $temp -Recurse -Force }

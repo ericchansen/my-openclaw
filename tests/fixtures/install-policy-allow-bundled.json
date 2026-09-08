@@ -1,0 +1,25 @@
+{
+  "protocolVersion": 1,
+  "openclawVersion": "2026.9.2",
+  "targetType": "skill",
+  "targetName": "reviewed-bundled-skill",
+  "sourcePath": "/var/lib/openclaw-policy-fixture/bundled",
+  "sourcePathKind": "directory",
+  "source": {
+    "kind": "bundled",
+    "authority": "openclaw",
+    "mutable": false,
+    "network": false
+  },
+  "origin": {
+    "type": "bundled"
+  },
+  "request": {
+    "kind": "skill-install",
+    "mode": "install",
+    "requestedSpecifier": "reviewed-bundled-skill:bundled"
+  },
+  "skill": {
+    "installId": "bundled"
+  }
+}

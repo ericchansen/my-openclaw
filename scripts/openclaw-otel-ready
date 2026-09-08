@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+marker=/run/openclaw-otel/ready
+case "${1:-}" in
+  mark)
+    for _ in {1..20}; do
+      if curl --fail --silent --show-error --max-time 1 http://127.0.0.1:13133/ >/dev/null; then
+        candidate="${marker}.$$"
+        trap 'rm -f -- "$candidate"' EXIT
+        umask 022
+        : > "$candidate"
+        chmod 0444 "$candidate"
+        mv -f -- "$candidate" "$marker"
+        trap - EXIT
+        exit 0
+      fi
+      sleep 0.25
+    done
+    printf 'Collector health endpoint did not become ready.\n' >&2
+    exit 78
+    ;;
+  clear)
+    rm -f -- "$marker"
+    ;;
+  *)
+    exit 64
+    ;;
+esac

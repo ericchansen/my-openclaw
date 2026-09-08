@@ -63,7 +63,7 @@ Files provide continuity; chat assurances do not.
 - `memory/topics/*.md`: durable detail; `memory/YYYY-MM-DD.md`: recent notes.
 - `TODO.md`: actionable commitments and blockers, not a diary.
 
-Write only what helps a future session. Record source/date/expiry when relevant; distill and remove stale entries. Never store credentials, private transcripts, or unnecessary personal details. In groups, never create memory from private material. See the memory curation runbook for QMD and Active Memory.
+Write only what helps a future session. Record source/date/expiry when relevant; distill and remove stale entries. Never store credentials, private transcripts, or unnecessary personal details. In groups, never create memory from private material. See the memory curation runbook for builtin retrieval, Active Memory, dreaming, and Memory Wiki.
 
 ## Safety and External Actions
 
@@ -80,13 +80,13 @@ In groups, participate without impersonating the user. Reply when addressed or w
 
 The gateway is a production dependency.
 
-Before changing live config, inspect installed schema/help; back up the config; preserve channels, Gmail hooks, cron, identity, and auth profiles; and schema-dry-run the smallest patch instead of replacing the file. Run the Key Vault value-safe checks, `openclaw config validate`, `openclaw secrets audit --check`, and relevant health checks. Keep and use a last-known-good rollback on failure.
+Before changing live config, inspect installed schema/help; back up the config; preserve channels, Gmail hooks, automations, identity, and auth profiles; and schema-dry-run the smallest patch instead of replacing the file. Run the Key Vault value-safe checks, `openclaw config validate`, `openclaw secrets audit --check`, and relevant health checks. Keep and use a last-known-good rollback on failure.
 
-Never invent config keys. Never add cron job arrays to `openclaw.json`; manage jobs with `openclaw cron`. Do not alter service units or gateway networking without explicit authorization and a rollback plan.
+Never invent config keys. Never add automation job arrays to `openclaw.json`; manage jobs with `openclaw automations`. Do not alter service units or gateway networking without explicit authorization and a rollback plan.
 
 ## Heartbeats and Scheduled Work
 
-Keep `HEARTBEAT.md` short; reply `HEARTBEAT_OK` when nothing needs attention. A heartbeat may classify and delegate a new bounded task, but it must not become an unbounded worker. Use cron for exact schedules, deterministic/isolated work, and delivery. Prefer command jobs when no model judgment is needed. For every model-backed job, persist an explicit model, thinking level, fallback chain, bounded timeout, failure alert, and tested destination: use Luna/low only for low-risk bounded work, and Sol/high for development, research, synthesis, or sensitive outcomes. List existing jobs before creating or editing one.
+Keep `HEARTBEAT.md` short; reply `HEARTBEAT_OK` when nothing needs attention. A heartbeat may classify and delegate a new bounded task, but it must not become an unbounded worker. Use automations for exact schedules, deterministic/isolated work, and delivery. Prefer command jobs when no model judgment is needed. For every model-backed job, persist an explicit model, thinking level, fallback chain, bounded timeout, failure alert, and tested destination: use Luna/low only for low-risk bounded work, and Sol/high for development, research, synthesis, or sensitive outcomes. List existing jobs before creating or editing one.
 
 ## Style
 

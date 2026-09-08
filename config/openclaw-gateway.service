@@ -2,13 +2,13 @@
 Description=OpenClaw Gateway
 After=network-online.target
 Wants=network-online.target
+Wants=openclaw-otel-collector.service
+After=openclaw-otel-collector.service
 StartLimitIntervalSec=0
 
 [Service]
 Type=simple
 User=__OPENCLAW_USER__
-RuntimeDirectory=openclaw-gateway
-RuntimeDirectoryMode=0700
 LogsDirectory=openclaw
 LogsDirectoryMode=0750
 UMask=0077
@@ -16,13 +16,21 @@ Environment=HOME=/home/__OPENCLAW_USER__
 Environment=NODE_ENV=production
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ExecStart=/usr/local/bin/openclaw-gateway-launch
-Restart=on-failure
+# OpenClaw requests full supervisor reloads via a clean exit.
+Restart=always
 RestartSec=30
 RestartPreventExitStatus=78
 TimeoutStartSec=90
 TimeoutStopSec=30
 SuccessExitStatus=0 143
-OOMPolicy=continue
+MemoryAccounting=true
+MemoryHigh=3G
+MemoryMax=4G
+MemorySwapMax=512M
+TasksMax=1024
+CPUWeight=200
+IOWeight=200
+OOMPolicy=stop
 KillMode=control-group
 
 [Install]

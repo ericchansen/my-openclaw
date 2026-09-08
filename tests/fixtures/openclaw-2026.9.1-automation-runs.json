@@ -1,0 +1,27 @@
+{
+  "entries": [
+    {
+      "ts": 1788530400000,
+      "jobId": "fixture-job-1",
+      "action": "finished",
+      "status": "ok",
+      "completionStatus": "succeeded",
+      "summary": "fixture result must be removed",
+      "deliveryStatus": "delivered"
+    },
+    {
+      "ts": 1788444000000,
+      "jobId": "fixture-job-1",
+      "action": "finished",
+      "status": "error",
+      "completionStatus": "failed",
+      "error": "fixture error must be removed",
+      "deliveryStatus": "not-requested"
+    }
+  ],
+  "total": 2,
+  "offset": 0,
+  "limit": 200,
+  "hasMore": false,
+  "nextOffset": null
+}

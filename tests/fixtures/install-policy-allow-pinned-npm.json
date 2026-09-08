@@ -1,0 +1,29 @@
+{
+  "protocolVersion": 1,
+  "openclawVersion": "2026.9.2",
+  "targetType": "plugin",
+  "targetName": "mcp-ebird",
+  "sourcePath": "/var/lib/openclaw-policy-fixture/npm-metadata.json",
+  "sourcePathKind": "file",
+  "source": {
+    "kind": "npm",
+    "authority": "third-party",
+    "mutable": false,
+    "network": true
+  },
+  "origin": {
+    "type": "npm"
+  },
+  "request": {
+    "kind": "plugin-npm",
+    "mode": "install",
+    "requestedSpecifier": "@pondlog/mcp-ebird@0.1.5"
+  },
+  "plugin": {
+    "pluginId": "mcp-ebird",
+    "contentType": "package",
+    "packageName": "@pondlog/mcp-ebird",
+    "version": "0.1.5",
+    "extensions": []
+  }
+}

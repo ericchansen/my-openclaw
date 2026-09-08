@@ -44,3 +44,6 @@ __pycache__/
 *.pyc
 .openclaw-state/
 /.openclaw-migration-*/
+/.repository-test-runtime/
+.playwright-mcp/
+.otel-redaction-test/

@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+telemetry_dir=/var/log/openclaw-telemetry
+ama_user="${OPENCLAW_AMA_READER_USER:-}"
+collector_user=openclaw-otel
+wait_seconds="${OPENCLAW_AMA_WAIT_SECONDS:-180}"
+ama_mdsd_path=/opt/microsoft/azuremonitoragent/bin/mdsd
+
+[[ $EUID -eq 0 ]] || {
+  printf 'Telemetry ACL setup must run as root.\n' >&2
+  exit 77
+}
+[[ "$wait_seconds" =~ ^[0-9]+$ && "$wait_seconds" -gt 0 ]] || exit 64
+command -v setfacl >/dev/null
+command -v getfacl >/dev/null
+command -v pgrep >/dev/null
+
+if [[ -z "$ama_user" ]]; then
+  for ((attempt = 0; attempt < wait_seconds; attempt++)); do
+    mapfile -t mdsd_pids < <(pgrep -x mdsd || true)
+    if [[ ${#mdsd_pids[@]} -eq 1 ]] &&
+      [[ "$(readlink -f "/proc/${mdsd_pids[0]}/exe")" == "$ama_mdsd_path" ]]; then
+      ama_uid="$(stat -c '%u' "/proc/${mdsd_pids[0]}")"
+      ama_user="$(getent passwd "$ama_uid" | awk -F: 'NR == 1 { print $1 }')"
+      [[ -n "$ama_user" ]] && break
+    fi
+    sleep 1
+  done
+  [[ -n "$ama_user" ]] || {
+    printf 'Verified Azure Monitor mdsd process did not appear within %s seconds.\n' \
+      "$wait_seconds" >&2
+    exit 78
+  }
+fi
+getent passwd "$ama_user" >/dev/null || {
+  printf 'Azure Monitor reader account is unavailable.\n' >&2
+  exit 78
+}
+getent passwd "$collector_user" >/dev/null
+
+if [[ -L "$telemetry_dir" || ( -e "$telemetry_dir" && ! -d "$telemetry_dir" ) ]]; then
+  printf 'Telemetry path is not a real directory: %s\n' "$telemetry_dir" >&2
+  exit 78
+fi
+install -d -o "$collector_user" -g "$collector_user" -m 0750 "$telemetry_dir"
+for name in metadata.jsonl content.jsonl; do
+  path="${telemetry_dir}/${name}"
+  if [[ -L "$path" || ( -e "$path" && ! -f "$path" ) ]]; then
+    printf 'Telemetry output is not a regular file: %s\n' "$path" >&2
+    exit 78
+  fi
+  if [[ ! -e "$path" ]]; then
+    install -o "$collector_user" -g "$collector_user" -m 0640 /dev/null "$path"
+  fi
+  chown "$collector_user:$collector_user" "$path"
+  chmod 0640 "$path"
+  setfacl --remove-all "$path"
+  setfacl --modify "u:${ama_user}:r--,m::r--" "$path"
+done
+
+setfacl --remove-all "$telemetry_dir"
+setfacl --remove-default "$telemetry_dir"
+setfacl --modify "u:${ama_user}:r-x,m::r-x" "$telemetry_dir"
+setfacl --default --modify \
+  "u::rwx,u:${ama_user}:r-X,g::r-x,m::r-x,o::---" "$telemetry_dir"
+
+probe="${telemetry_dir}/.acl-probe.$$"
+trap 'rm -f -- "$probe"' EXIT
+runuser -u "$collector_user" -- sh -c 'umask 027; : > "$1"' sh "$probe"
+
+for path in "$telemetry_dir" "$telemetry_dir/metadata.jsonl" \
+  "$telemetry_dir/content.jsonl" "$probe"; do
+  runuser -u "$ama_user" -- test -r "$path"
+  mode="$(stat -c '%a' "$path")"
+  (( (8#$mode & 7) == 0 )) || {
+    printf 'Telemetry path is world-accessible: %s\n' "$path" >&2
+    exit 78
+  }
+done
+getfacl --absolute-names --omit-header "$telemetry_dir" |
+  grep -qx "user:${ama_user}:r-x"
+getfacl --absolute-names --omit-header "$telemetry_dir" |
+  grep -qx "default:user:${ama_user}:r-x"
+getfacl --absolute-names --omit-header "$probe" |
+  grep -Eq "^user:${ama_user}:r-x[[:space:]]+#effective:r--$|^user:${ama_user}:r--$"
+
+rm -f -- "$probe"
+trap - EXIT

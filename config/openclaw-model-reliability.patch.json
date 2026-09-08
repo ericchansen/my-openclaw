@@ -1,0 +1,18 @@
+{
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "github-copilot/claude-sonnet-5",
+        "fallbacks": ["github-copilot/gpt-5.6-sol"]
+      }
+    },
+    "entries": {
+      "orchestrator": {
+        "model": {
+          "primary": "github-copilot/claude-sonnet-5",
+          "fallbacks": ["github-copilot/gpt-5.6-sol"]
+        }
+      }
+    }
+  }
+}

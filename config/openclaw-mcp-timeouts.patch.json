@@ -1,0 +1,14 @@
+{
+  "mcp": {
+    "servers": {
+      "ebird": {
+        "connectionTimeoutMs": 30000,
+        "requestTimeoutMs": 60000
+      },
+      "pondlog": {
+        "connectionTimeoutMs": 30000,
+        "requestTimeoutMs": 60000
+      }
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "agents": {
+    "defaults": {
+      "heartbeat": {
+        "agentId": "main"
+      },
+      "systemAgent": {
+        "agentId": "main"
+      }
+    },
+    "ownership": "explicit",
+    "entries": {
+      "main": {
+        "workspace": "__STATE__/workspace"
+      },
+      "orchestrator": {}
+    }
+  },
+  "memory": {
+    "citations": "auto",
+    "search": {
+      "enabled": true,
+      "provider": "github-copilot"
+    }
+  },
+  "talk": {
+    "agentId": "main"
+  }
+}

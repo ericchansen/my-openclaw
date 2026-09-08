@@ -1,162 +1,103 @@
 # OpenClaw on Azure
 
-Reproducible Azure VM deployment and operating model for a private OpenClaw gateway with Telegram, Discord, Azure Key Vault, Tailscale, verified Blob backups, and Azure Monitor.
+Reproducible Azure VM deployment for a private OpenClaw gateway with Telegram,
+Discord, Key Vault SecretRefs, verified Blob backups, and Azure Monitor.
 
-## Design
+The runtime is the unmodified official OpenClaw **2026.9.2** on Node **22.23.1**.
+[Runtime versions and integrity pins](config/runtime-versions.json) are authoritative;
+do not substitute an experimental distribution or a mutable package tag.
+Production uses [GPT-6 Astra through the official Copilot harness](docs/astra-model.md),
+with native Sonnet 5 fallback. The default template remains a valid Sonnet baseline
+until the official plugin and CLI-path prerequisites are installed.
 
-- Ubuntu 24.04 ARM64 VM with a 64 GiB Standard SSD OS disk and a system-assigned managed identity
-- OpenClaw gateway under systemd, bound to loopback and exposed through Tailscale Serve
-- Azure Key Vault exec SecretRefs instead of plaintext config or broad environment injection
-- Private Azure Blob container with managed-identity uploads
-- Daily verified backups retained for 35 days and monthly backups retained for 12 months
-- Structured local health checks collected by Azure Monitor/Log Analytics
-- Parent-owned native OpenClaw orchestration for complex requests
-- Builtin hybrid memory search using GitHub Copilot embeddings over curated private files
-- GPT-5.6 Sol with high reasoning as the interactive control plane, Claude Sonnet 5 as fallback, and GPT-5.6 Luna for bounded low-risk background work
+## Operating boundaries
 
-Telegram and Discord configuration is an overlay on the live VM. Deployment automation never runs onboarding or replaces a working channel configuration wholesale.
+- Systemd owns the Gateway, backup/health timers, and local OTel collector.
+- The Gateway binds to loopback; remote access requires authenticated, reviewed routing.
+- Existing channels, identities, approved family routing, credentials, and data are preserved.
+- Owner administration is separate from explicitly approved trusted-family sharing.
+- Non-family/default isolation requires separate agents/workspaces, not just session keys.
+- Current metadata telemetry and its collector are deployed dependencies; keep them.
+- Future private-endpoint/NAT and public-IP cutover work is deferred, **not live**.
 
-## Repository
-
-| Path | Purpose |
-|---|---|
-| `infra/` | VM, identity, Key Vault, backup storage, monitoring, budget, and RBAC |
-| `config/` | OpenClaw template and canonical systemd units |
-| `scripts/` | Idempotent runtime install/apply, backup, restore verification, and health checks |
-| `workspace/` | Concise agent contract and Copilot repository-lane skill |
-| `docs/` | SecretRef, cron, orchestration, memory, benchmark, backup, and operations runbooks |
-| `deploy.ps1` | Canonical Azure validation/what-if/deployment entry point |
-| `migrate.ps1` | Verified backup-based migration that fails closed when restore is unsupported |
+See the [security model](docs/security-model.md) for trust boundaries and residual risks.
+Do not rerun onboarding or replace a working configuration with the reference template.
+Family migration tooling is deferred; future identity/sharing changes require explicit review.
 
 ## Prerequisites
 
-- Azure CLI authenticated to the target subscription
-- Azure Bicep CLI (`az bicep version`)
-- PowerShell 7
-- OpenSSH client and a verified host key for existing-VM updates
-- An SSH public key
+Use Azure CLI authenticated to the intended subscription, Bicep CLI, and PowerShell 7.
+New VMs need an SSH public key; existing-host runtime application needs OpenSSH/Tailscale
+and a separately verified SSH host key. Windows unit checks require WSL with
+`systemd-analyze`; see [validation](docs/operations.md#validation).
 
-Do not pass bot tokens, PATs, or API keys to deployment scripts. Put credential values in Key Vault through an approved value-safe process, then map supported fields to SecretRefs.
+Never pass bot tokens, PATs, or API keys to deployment scripts. Seed credentials
+through an approved value-safe Key Vault process and configure
+[SecretRefs](docs/keyvault-integration.md).
 
-## Deploy Azure Resources
+## Deploy infrastructure
 
-`deploy.ps1` is the canonical entry point. It validates and previews each resource-group or subscription deployment before applying that scope.
-When `scripts/openclaw-health-check.sh` changes, run
-`scripts/sync-cloud-init-assets.ps1`; deployment fails closed if the compressed
-cloud-init copy is stale.
-For a new VM, it resolves the signed-in Azure principal and grants that principal Key Vault Administrator so required secrets can be seeded; pass `-DeployerPrincipalId` when automatic resolution is unavailable. Existing-VM mode does not add that role unless explicitly requested.
-Remove the deployer assignment after secrets are seeded and SecretRefs are verified unless ongoing Key Vault administration is intentional.
-
-New VM:
+[deploy.ps1](deploy.ps1) validates and previews each deployment scope before applying it.
+For a new VM:
 
 ```powershell
-.\deploy.ps1 `
-  -SshPublicKeyPath "$HOME\.ssh\id_ed25519.pub" `
-  -MonitoringContactEmails "you@example.com"
+.\deploy.ps1 -SshPublicKeyPath "$HOME\.ssh\id_ed25519.pub"
 ```
 
-Existing VM infrastructure update:
+Review the what-if and confirm before applying. New-host mode grants Key Vault
+administration for secret seeding; remove that deployer assignment afterward
+unless continued administration is intentional. Regenerate changed cloud-init with
+[`scripts/sync-cloud-init-assets.ps1`](scripts/sync-cloud-init-assets.ps1) first.
+New VMs retain [baseline public networking](infra/main.bicep), not a private-network cutover.
+
+Existing-host infrastructure updates require a succeeded snapshot of the current
+OS disk; obtain and retain it using [the recovery procedure](docs/backup-restore.md#pre-change-recovery-point).
 
 ```powershell
-.\deploy.ps1 `
-  -SshPublicKeyPath "$HOME\.ssh\id_ed25519.pub" `
-  -VerifiedSnapshotId "<managed-disk-snapshot-resource-id>" `
-  -MonitoringContactEmails "you@example.com" `
-  -SkipCustomData
+.\deploy.ps1 -SkipCustomData `
+  -VerifiedSnapshotId "<succeeded-current-os-disk-snapshot-resource-id>"
 ```
 
-Review the complete what-if. Stop if Azure proposes replacing the VM, OS disk, NIC, VNet, public IP, or Key Vault.
-Interactive runs require separate confirmation after each scope's what-if. The script detects an existing `openclaw-vm` automatically and will not deploy until given a succeeded snapshot of its current OS disk. Existing-VM mode preserves the image version, VM size, and disk size already recorded in Azure and references the existing NSG without redeploying its rules.
+Existing-host mode uses [main-existing.bicep](infra/main-existing.bicep) to refresh
+**monitoring only**, through the [shared monitoring module](infra/monitoring.bicep).
+VM, Key Vault, and storage are existing references; VM-model, NIC, VNet, vault,
+storage, and OpenClaw runtime changes are excluded. Runtime updates use the
+separate guarded application below; private-network cutover remains future work.
 
-`azure.yaml` describes the Bicep project for Azure Developer CLI discovery, but it does not replace the guarded deployment workflow above.
+## Apply runtime assets
 
-## Apply Runtime Assets to an Existing VM
+Create a verified native backup on the host and retain its resulting archive path:
 
-After the infrastructure deployment outputs the Key Vault and storage names:
+```bash
+install -d -m 0700 "$HOME/backups/pre-update"
+openclaw backup create --output "$HOME/backups/pre-update" --verify
+```
+
+Then use the guarded [runtime application script](scripts/apply-runtime.ps1):
 
 ```powershell
 .\scripts\apply-runtime.ps1 `
-  -VmHost "azureuser@<vm-fqdn>" `
-  -ResourceGroupName "rg-openclaw" `
-  -VerifiedSnapshotId "<managed-disk-snapshot-resource-id>" `
-  -KeyVaultName "<vault-name>" `
-  -StorageAccountName "<storage-account>"
+  -VmHost "<runtime-user>@<verified-host>" `
+  -ResourceGroupName "<resource-group>" `
+  -VerifiedSnapshotId "<succeeded-current-os-disk-snapshot-resource-id>" `
+  -VerifiedBackupArchive "<absolute-on-host-native-archive-path>" `
+  -KeyVaultName "<vault-name>" -StorageAccountName "<storage-account>"
 ```
 
-The script requires an existing verified SSH host key and rejects an SSH target whose Azure IMDS resource ID does not match the snapshotted VM. The installer:
+Supply the native archive, not the outer Blob bundle. The script verifies host
+identity, snapshot provenance, and backup evidence before the maintenance-locked
+update. Failures after mutation stay offline; follow
+[operations and rollback](docs/operations.md), not a bare global npm update.
+Use `-UseTailscaleSsh` only after tailnet enrollment and SSH authorization are verified.
 
-- installs tested runtime versions;
-- installs exact pinned eBird/Pondlog MCP packages behind a Key Vault-aware launcher;
-- installs canonical gateway/backup/health units and scripts;
-- validates an active OpenClaw config before restarting the gateway;
-- prevents `needrestart` from restarting unrelated host services during package maintenance;
-- merges bounded Docker logging defaults without restarting Docker;
-- starts backup and health timers;
-- configures fixed missed-run-aware health cadence and bounded persistent journal retention;
-- never onboards or rewrites channels.
+## Operator references
 
-Apply Docker daemon changes only during an operator-controlled window, then recreate only OpenClaw-owned containers. Do not stop unrelated projects.
+- [Operations, health, and safe changes](docs/operations.md)
+- [Availability acceptance and known limitations](docs/availability-recovery.md)
+- [Backup, staged restore, and rollback](docs/backup-restore.md)
+- [Security and trusted-family boundaries](docs/security-model.md)
+- [Astra production overlay](docs/astra-model.md)
+- [Key Vault integration](docs/keyvault-integration.md) and [telemetry privacy](docs/telemetry-privacy.md)
 
-## Configure OpenClaw
-
-`config/openclaw.template.json` is a schema-validated reference, not a replacement for a live config.
-
-For an existing deployment:
-
-1. Create and verify a backup.
-2. Install the Key Vault resolver.
-3. Add the exec provider and credential references through the OpenClaw secrets workflow.
-4. Apply only the non-secret quality patch paths needed for the Sol/Luna model policy, pruning, planning, Tool Search, subagents, heartbeat, hybrid memory, trusted plugin allowlisting, diagnostics, and logging.
-5. Validate before restart.
-6. Compare sanitized before/after channel and cron structures.
-7. Exercise Telegram, Discord, Gmail, model, cron, and native task handoff through their existing identities.
-
-Never rerun onboarding to apply this repository.
-
-See [Key Vault SecretRefs](docs/keyvault-integration.md), [Operations](docs/operations.md), and [Backup and restore](docs/backup-restore.md).
-
-## Workspace
-
-Copy generic templates only when creating a new workspace:
-
-```bash
-install -m 0644 workspace/AGENTS.md ~/.openclaw/workspace/AGENTS.md
-install -m 0644 workspace/SOUL.template.md ~/.openclaw/workspace/SOUL.md
-install -m 0644 workspace/USER.template.md ~/.openclaw/workspace/USER.md
-install -m 0644 workspace/IDENTITY.template.md ~/.openclaw/workspace/IDENTITY.md
-install -m 0644 workspace/HEARTBEAT.template.md ~/.openclaw/workspace/HEARTBEAT.md
-install -m 0644 workspace/TOOLS.template.md ~/.openclaw/workspace/TOOLS.md
-```
-
-Do not overwrite a live private `MEMORY.md`, `USER.md`, topic memory, daily notes, skills, or channel-specific instructions. Curate those in place according to [Memory curation](docs/memory-curation.md).
-
-## Routine Checks
-
-```bash
-curl --fail http://127.0.0.1:18789/health
-openclaw config validate
-openclaw doctor --lint --json
-openclaw channels status --probe --json
-openclaw security audit --json
-openclaw secrets audit --allow-exec --check --json
-openclaw tasks audit --json
-systemctl status openclaw-gateway openclaw-backup.timer openclaw-health.timer
-```
-
-Monitor `/health`, not a model-backed completion endpoint.
-
-## Documentation
-
-- [Operations and rollback](docs/operations.md)
-- [Backup and restore](docs/backup-restore.md)
-- [Azure Key Vault SecretRefs](docs/keyvault-integration.md)
-- [Native orchestration](docs/orchestrator-pattern.md)
-- [Agent hierarchy](docs/agent-hierarchy.md)
-- [Cron patterns](docs/cron-patterns.md)
-- [TODO and task conventions](docs/todo-conventions.md)
-- [Memory curation](docs/memory-curation.md)
-- [Private quality benchmark](docs/quality-benchmark.md)
-
-## Deferred Network Work
-
-This pass intentionally preserves the existing public IP and SSH rule. A later change should move administration to Bastion or a Tailscale-only path and restrict the storage/Key Vault network surfaces with private endpoints or firewalls. Data remains non-anonymous and protected by Entra ID/RBAC in the current design.
+The [workspace templates](workspace/) are for new workspaces only. Never overwrite
+live private memory, user files, skills, or channel instructions with generic examples.

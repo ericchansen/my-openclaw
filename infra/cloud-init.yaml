@@ -1,80 +1,16 @@
 #cloud-config
 package_update: true
 package_upgrade: true
+packages:
+  - xz-utils
 
 write_files:
-  - path: /opt/openclaw/runtime-assets/install-openclaw-runtime.sh
-    owner: root:root
-    permissions: '0755'
-    encoding: b64
-    content: __INSTALLER_B64__
-  - path: /opt/openclaw/runtime-assets/openclaw-gateway.service
-    owner: root:root
-    permissions: '0644'
-    encoding: b64
-    content: __GATEWAY_SERVICE_B64__
-  - path: /opt/openclaw/runtime-assets/openclaw-backup.service
-    owner: root:root
-    permissions: '0644'
-    encoding: b64
-    content: __BACKUP_SERVICE_B64__
-  - path: /opt/openclaw/runtime-assets/openclaw-backup.timer
-    owner: root:root
-    permissions: '0644'
-    encoding: b64
-    content: __BACKUP_TIMER_B64__
-  - path: /opt/openclaw/runtime-assets/openclaw-health.service
-    owner: root:root
-    permissions: '0644'
-    encoding: b64
-    content: __HEALTH_SERVICE_B64__
-  - path: /opt/openclaw/runtime-assets/openclaw-health.timer
-    owner: root:root
-    permissions: '0644'
-    encoding: b64
-    content: __HEALTH_TIMER_B64__
-  - path: /opt/openclaw/runtime-assets/openclaw-journald.conf
-    owner: root:root
-    permissions: '0644'
-    encoding: b64
-    content: __JOURNALD_CONFIG_B64__
-  - path: /opt/openclaw/runtime-assets/openclaw-backup.sh
-    owner: root:root
-    permissions: '0755'
-    encoding: b64
-    content: __BACKUP_SCRIPT_B64__
-  - path: /opt/openclaw/runtime-assets/openclaw-restore-verify.sh
-    owner: root:root
-    permissions: '0755'
-    encoding: b64
-    content: __RESTORE_VERIFY_SCRIPT_B64__
-  - path: /opt/openclaw/runtime-assets/openclaw-health-check.sh
-    owner: root:root
-    permissions: '0755'
-    encoding: gzip+base64
-    content: __HEALTH_SCRIPT_GZIP_B64__
-  - path: /opt/openclaw/runtime-assets/openclaw-keyvault-resolver.py
-    owner: root:root
-    permissions: '0755'
-    encoding: b64
-    content: __KEYVAULT_RESOLVER_B64__
-  - path: /opt/openclaw/runtime-assets/openclaw-gateway-launch.py
-    owner: root:root
-    permissions: '0555'
-    encoding: b64
-    content: __GATEWAY_LAUNCH_B64__
-  - path: /opt/openclaw/runtime-assets/openclaw-gog-launch.py
-    owner: root:root
-    permissions: '0555'
-    encoding: b64
-    content: __GOG_LAUNCH_B64__
-  - path: /opt/openclaw/runtime-assets/openclaw-mcp-launch.py
-    owner: root:root
-    permissions: '0555'
-    encoding: b64
-    content: __MCP_LAUNCH_B64__
+  - path: /opt/openclaw/runtime-assets.tar.xz
+    permissions: '0600'
+    encoding: base64
+    content: __RUNTIME_BUNDLE_XZ_B64__
 
 runcmd:
-  - [bash, /opt/openclaw/runtime-assets/install-openclaw-runtime.sh, --asset-dir, /opt/openclaw/runtime-assets, --user, __ADMIN_USERNAME__, --key-vault, __KEY_VAULT_NAME__, --storage-account, __STORAGE_ACCOUNT_NAME__, --storage-container, __STORAGE_CONTAINER_NAME__, --openclaw-version, __OPENCLAW_VERSION__, --node-version, __NODE_VERSION__, --node-sha256, __NODE_SHA256__, --copilot-version, __COPILOT_VERSION__, --mcp-ebird-version, __MCP_EBIRD_VERSION__, --mcp-pondlog-version, __MCP_PONDLOG_VERSION__]
-  - [systemctl, start, openclaw-backup.timer, openclaw-health.timer]
-  - [bash, -c, 'echo "OpenClaw runtime provisioning complete; run tailscale up and openclaw onboard before starting the gateway."']
+  - [install, -d, -m, '0755', /opt/openclaw/runtime-assets]
+  - [tar, -xJf, /opt/openclaw/runtime-assets.tar.xz, -C, /opt/openclaw/runtime-assets, --no-same-owner]
+  - [bash, /opt/openclaw/runtime-assets/install-openclaw-runtime.sh, --asset-dir, /opt/openclaw/runtime-assets, --user, __ADMIN_USERNAME__, --key-vault, __KEY_VAULT_NAME__, --storage-account, __STORAGE_ACCOUNT_NAME__, --storage-container, __STORAGE_CONTAINER_NAME__, --openclaw-version, __OPENCLAW_VERSION__, --openclaw-integrity, __OPENCLAW_INTEGRITY__, --diagnostics-otel-version, __DIAGNOSTICS_OTEL_VERSION__, --diagnostics-otel-integrity, __DIAGNOSTICS_OTEL_INTEGRITY__, --node-version, __NODE_VERSION__, --node-sha256, __NODE_SHA256__, --otel-version, __OTEL_VERSION__, --otel-url, __OTEL_URL__, --otel-sha256, __OTEL_SHA256__, --copilot-version, __COPILOT_VERSION__, --copilot-integrity, __COPILOT_INTEGRITY__, --mcp-ebird-version, __MCP_EBIRD_VERSION__, --mcp-ebird-integrity, __MCP_EBIRD_INTEGRITY__, --mcp-pondlog-version, __MCP_PONDLOG_VERSION__, --mcp-pondlog-integrity, __MCP_PONDLOG_INTEGRITY__, --sandbox-source-commit, __SANDBOX_SOURCE_COMMIT__, --sandbox-archive-url, __SANDBOX_ARCHIVE_URL__, --sandbox-archive-sha256, __SANDBOX_ARCHIVE_SHA256__, --sandbox-browser-contract, __SANDBOX_BROWSER_CONTRACT__]

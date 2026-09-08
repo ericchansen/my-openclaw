@@ -1,67 +1,52 @@
-# Cron and Scheduled Work
+# Automations and Scheduled Work
 
-Manage schedules with the OpenClaw cron CLI, not an `openclaw.json` jobs array. Tasks are execution records, not a scheduler.
+Manage schedules with `openclaw automations`, the primary `2026.9.1` CLI name.
+`openclaw cron` remains an alias and `cron.*` remains the persisted
+configuration/runtime JSON namespace. Tasks are execution records, not a
+scheduler.
 
-Official references: [Cron jobs](https://docs.openclaw.ai/automation/cron-jobs) and [CLI cron](https://docs.openclaw.ai/cli/cron).
+Official references:
+[automations](https://github.com/openclaw/openclaw/blob/v2026.9.1/docs/automation/cron-jobs.md)
+and [CLI](https://github.com/openclaw/openclaw/blob/v2026.9.1/docs/cli/cron.md).
 
-## Inspect Before Changing
+## Inventory before mutation
 
 ```bash
-openclaw cron list
-openclaw cron show <job-id>
-openclaw cron runs --id <job-id>
+openclaw automations status --json
+openclaw automations list --all --json
+openclaw automations show <job-id>
+openclaw automations runs --id <job-id>
 ```
 
-Use `openclaw cron create --help` and `openclaw cron edit --help` from the installed version before composing a production command. Do not recreate existing Telegram, Discord, Gmail, or operational jobs during a config migration.
+Compare the native inventory before and after reviewed in-place edits; do not
+recreate jobs during migration. Inventory output can contain private prompts,
+commands and recipients: keep any saved copy private and do not commit it.
 
-## Choose the Smallest Job Type
+## Runtime policy
 
-### Deterministic command
+`cron.skipMissedJobs: true` is the chosen policy: recurring slots missed while
+the Gateway was offline advance to the next future occurrence. One-shot jobs
+retain upstream catch-up semantics. This avoids stale side effects; it may drop
+offline recurring work.
 
-Prefer command jobs for scripts or CLIs with fixed inputs and outputs:
+Existing jobs are preserved. Review any job whose `sessionTarget` is not
+`isolated`; change it in place only after checking its intended context and
+delivery. New model-backed jobs should use isolated sessions, explicit
+model/fallback/thinking, a bounded timeout, and failure alerts.
 
-- exact executable and argv; no shell interpolation when avoidable;
-- dedicated service identity and least privilege;
-- bounded runtime and output;
-- idempotency or a run key;
-- explicit success criterion;
-- failure alert and tested destination.
+Use deterministic command jobs for fixed scripts and isolated agent jobs only
+for interpretation or synthesis. Never put secret values in arguments, names,
+prompts, or delivery text. Resolve them through approved SecretRefs.
 
-Never place secret values in command arguments, job names, prompts, or delivery text. Resolve them at execution through the approved SecretRef/managed-identity path.
+## Creation example
 
-### Isolated agent
-
-Use an isolated agent only when interpretation or synthesis is necessary:
-
-- use `--light-context`;
-- set model, fallback sequence, and thinking explicitly;
-- provide one bounded prompt and completion criterion;
-- set a timeout below the scheduler's maximum;
-- deliver only the synthesized result;
-- configure failure alerts.
-
-Do not use cron to create an unbounded orchestration session. The scheduled parent still owns any native children and must use `sessions_yield`, verify their evidence, and synthesize the delivery.
-
-### Model policy
-
-The interactive parent uses GPT-5.6 Sol as the control plane. Persist each automation's execution policy instead of inheriting whichever interactive model happens to be current:
-
-- no model for deterministic scripts, probes, backups, renewals, and exact transformations;
-- `github-copilot/gpt-5.6-luna` with low thinking for bounded, low-risk extraction, formatting, or triage;
-- `github-copilot/gpt-5.6-sol` with high thinking for development, multi-source research, ambiguous synthesis, or sensitive outcomes;
-- choose Sol when classification is uncertain.
-
-Sol may select this policy when it creates or edits a job, but the stored job remains explicit and auditable. Do not let a heartbeat silently rewrite existing job policy.
-
-## Example Creation Workflow
-
-Flags can evolve; confirm them against installed `2026.7.1` help:
+Confirm exact flags first:
 
 ```bash
-openclaw cron create --help
-openclaw cron create \
+openclaw automations add --help
+openclaw automations add "0 9 * * 1" \
+  "<bounded report prompt>" \
   --name "weekly-quality-report" \
-  --cron "0 9 * * 1" \
   --tz "UTC" \
   --session isolated \
   --light-context \
@@ -71,35 +56,33 @@ openclaw cron create \
   --timeout-seconds 900 \
   --announce \
   --channel telegram \
-  --to "<approved-destination>" \
-  --message "<bounded report prompt>"
+  --to "<approved-destination>"
 
-openclaw cron edit <job-id> \
+openclaw automations edit <job-id> \
   --failure-alert \
   --failure-alert-after 1 \
   --failure-alert-cooldown "6h" \
+  --failure-alert-exclude-skipped \
   --failure-alert-channel telegram \
   --failure-alert-to "<approved-destination>"
 ```
 
-`cron create` does not accept failure-alert flags in 2026.7.1, so configure them with `cron edit` after capturing the new job ID. Use `openclaw cron run <job-id>` for a controlled test, then inspect `openclaw cron runs --id <job-id>`. Prefer editing an existing job to delete/recreate so run history and identity remain clear.
+Creation does not accept failure-alert flags in `2026.9.1`; apply them with an
+in-place edit. Test with `openclaw automations run <job-id> --wait`, then inspect
+the exact run. Execution `status` and whole-run `completionStatus` are distinct;
+delivery status is separate again. A successful execution with failed required
+delivery is not a successful completed automation.
 
-For daily user-facing synthesis jobs, start with two consecutive execution errors,
-exclude scheduler skips, and use the existing delivery route unless a separate operational
-destination is required. This reports a real retry sequence without turning a retained
-daily-job error into a day-long platform outage. Keep Azure scheduler health separate from
-the job's built-in failure delivery.
-
-## Reliability Checklist
+## Reliability checklist
 
 - timezone and daylight-saving behavior are explicit;
-- overlapping runs are prevented or safe;
-- timeout leaves time for cleanup and alerting;
-- model fallback is observable in the result/log;
-- delivery failure is distinct from work failure;
-- skipped-run and repeated-failure behavior is configured;
-- alert destination was tested without sensitive content;
-- job can be retried safely;
-- ownership and rollback are documented.
+- overlap and retries are safe;
+- timeout leaves cleanup/alert time;
+- failure alerts distinguish execution errors from delivery failures;
+- skipped runs do not count as execution errors unless explicitly selected;
+- destination tests contain no sensitive content;
+- run history and job identity survive edits;
+- owner and rollback are documented.
 
-Use a heartbeat only for a few batched, context-aware checks that tolerate drift. The template runs a lightweight isolated Sol heartbeat every two hours; it should classify and delegate bounded work rather than execute a long workflow inline. Use cron for exact timing and isolated execution.
+Heartbeats are for a few context-aware checks that tolerate drift.
+Automations own exact timing and isolated execution.

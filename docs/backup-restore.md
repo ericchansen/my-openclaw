@@ -1,126 +1,100 @@
-# Backup and Restore
+# Backup and restore
 
-OpenClaw state is backed up with two independent layers:
+The [backup helper](../scripts/openclaw-backup.sh) bundles a verified native
+`openclaw backup create --verify` archive with owner-aware SQLite snapshots of
+shared state and every initialized configured agent database. Checksums and a
+manifest accompany managed-identity Blob uploads; storage account keys are not used.
+Use the exact [runtime pins](../config/runtime-versions.json) and
+[official backup CLI](https://github.com/openclaw/openclaw/blob/v2026.9.2/docs/cli/backup.md).
 
-1. `openclaw backup create --verify` creates the supported full archive.
-2. Online SQLite snapshots capture the global and main-agent databases and run `PRAGMA integrity_check`.
+## Coverage and scheduling
 
-The backup script packages the verified artifacts, manifest, and checksums, then uploads with the VM managed identity. It never uses storage account keys.
+SQLite snapshots use the backup API to include committed WAL state without
+copying live databases or their `-wal`/`-shm` sidecars. An uninitialized agent is
+recorded as `database-not-found`; an existing inaccessible/corrupt database fails
+the backup. Inspect coverage in the manifest rather than assuming all agents ran.
 
-## Schedule and Retention
+Native archives exclude some session/cron `.jsonl`/`.log` and log-directory files.
+Canonical current transcripts are covered by agent SQLite snapshots; excluded
+legacy/completed files are not a portable-recovery guarantee. For complete
+filesystem recovery, stop the Gateway and quiesce other writers before taking a
+disk/filesystem snapshot. Do not copy excluded live files piecemeal.
 
-`openclaw-backup.timer` runs daily. Each successful run writes:
+The timer runs daily. [Storage lifecycle rules](../infra/main.bicep) retain
+`daily/YYYY/MM/DD/` objects for 35 days and `monthly/YYYY/MM/` for 365 days.
+The first successful daily run each month establishes the monthly copy.
+Versioning/soft delete add protection, not a legal-hold or WORM guarantee.
 
-```text
-daily/YYYY/MM/DD/openclaw-<timestamp>.tar.gz
-```
+Backup holds a shared [maintenance lock](operations.md#stable-updates) throughout.
+Contention emits `backup_skipped` without replacing the last backup status.
+A missing/unsafe lock is an error; never delete it or run unlocked.
 
-The first successful run in a month also creates:
-
-```text
-monthly/YYYY/MM/openclaw-YYYY-MM.tar.gz
-```
-
-If the first daily run fails, later runs continue trying to establish that month's copy. Azure lifecycle rules delete daily objects after 35 days and monthly objects after 365 days. Blob versioning, soft delete, change feed, and point-in-time restore provide additional recovery protection; this is not a legal-hold/WORM policy.
-
-## Check Backup Health
+## Check and rehearse recovery
 
 ```bash
-systemctl status openclaw-backup.timer
-systemctl status openclaw-backup.service
+systemctl status openclaw-backup.timer openclaw-backup.service
 journalctl -u openclaw-backup.service --since today --no-pager
 cat /var/lib/openclaw-runtime/backup-status.json | jq
-```
-
-The status file contains only timestamp, result, and checksum detail. It must not contain secret values or archive content.
-
-List objects with managed identity:
-
-```bash
-set -a
-source /etc/openclaw/runtime.env
-set +a
-az login --identity --allow-no-subscriptions
-az storage blob list \
-  --account-name "$OPENCLAW_BACKUP_ACCOUNT" \
-  --container-name "$OPENCLAW_BACKUP_CONTAINER" \
-  --auth-mode login \
-  --query '[].{name:name,size:properties.contentLength,modified:properties.lastModified}' \
-  --output table
-```
-
-## Non-Destructive Restore Verification
-
-Choose an existing Blob name and run:
-
-```bash
 set -a
 source /etc/openclaw/runtime.env
 set +a
 openclaw-restore-verify 'daily/YYYY/MM/DD/openclaw-<timestamp>.tar.gz'
 ```
 
-The verifier:
+Choose an existing Blob. The [verifier](../scripts/openclaw-restore-verify.sh)
+uses private staging, rejects unsafe archive members, checks manifests/checksums,
+verifies native and SQLite artifacts, and rehearses native restore into a fresh
+tree. It never activates or writes production state. Rehearse after rollout and
+periodically thereafter; keep all archive/diagnostic content private.
 
-- downloads into a private temporary directory;
-- rejects unsafe archive members;
-- verifies all checksums and manifests;
-- runs OpenClaw archive verification;
-- checks both SQLite snapshots;
-- restores SQLite copies only into disposable files;
-- never writes production state.
+## Pre-change recovery point
 
-Run this after initial rollout and quarterly thereafter.
+Before existing-host infrastructure or runtime changes:
 
-## Existing-Host Recovery Point
+1. As the runtime user, create and retain a verified native archive:
+   `openclaw backup create --output <protected-backup-directory> --verify`.
+2. Identify the VM's current OS managed disk and create a
+   [managed-disk snapshot](https://learn.microsoft.com/en-us/azure/virtual-machines/snapshot-copy-managed-disk).
+   Quiesce writers first when an application-consistent rollback is required.
+3. Confirm snapshot provisioning is `Succeeded` and its source is that current
+   OS disk; record its resource ID, timestamp, archive checksum, and runtime version.
+4. Pass the snapshot ID to [deploy.ps1](../deploy.ps1) or
+   [apply-runtime.ps1](../scripts/apply-runtime.ps1); runtime apply also needs the
+   native archive path, **not** the outer Blob bundle. Both guard snapshot provenance.
+   Existing-host deployment refreshes monitoring only; runtime application is separate.
 
-Before an existing-host infrastructure or runtime update, create a managed-disk snapshot and verify that it succeeded:
+For an older archive rejected because of derived absolute plugin/npm symlinks,
+stop the Gateway and use [openclaw-migration-backup.sh](../scripts/openclaw-migration-backup.sh).
+It handles only recognized derived links and restores them; unknown links fail
+closed. Preserve the quiesced disk snapshot as the complete rollback source.
+
+## Staged restore and activation
 
 ```bash
-os_disk_id="$(az vm show \
-  --resource-group rg-openclaw \
-  --name openclaw-vm \
-  --query storageProfile.osDisk.managedDisk.id \
-  --output tsv)"
-snapshot_name="openclaw-vm-os-$(date -u +%Y%m%d-%H%M%S)"
-az snapshot create \
-  --resource-group rg-openclaw \
-  --name "$snapshot_name" \
-  --source "$os_disk_id" \
-  --sku Standard_LRS \
-  --output none
-snapshot_id="$(az snapshot show \
-  --resource-group rg-openclaw \
-  --name "$snapshot_name" \
-  --query id \
-  --output tsv)"
+openclaw backup restore <native-archive.tar.gz> --target <fresh-staging-directory>
 ```
 
-Pass `snapshot_id` to `deploy.ps1` or `apply-runtime.ps1`. Both scripts reject a snapshot that is not in `Succeeded` state or whose source is not the VM's current OS disk.
+Never target live state or unpack the outer bundle over it.
+[migrate.ps1](../migrate.ps1) requires the source Gateway stopped and RPC unreachable
+before and after archive creation. It and [migrate-restore.sh](../scripts/migrate-restore.sh)
+only stage recovery; they do not stop/start services or activate restored state.
 
-## Full Restore
+Keep the Gateway offline while verifying staging ownership/modes, configuration,
+and each shared/agent SQLite snapshot. Preserve the current tree, restore the
+intended compatible database snapshots using the installed backup CLI, and
+atomically select the recovered tree through an operator-reviewed procedure.
+Validate configuration and run Doctor before one start. Check exact running
+version, real channels/tools, automations/tasks, and backup/health timers.
 
-OpenClaw 2026.7.1 can create and verify full archives but does not expose a supported full-archive restore command. Do not unpack an archive over a live state directory.
+## Rollback layers
 
-Until the installed version provides an official restore operation:
+- **Code:** install the reviewed exact prior package and repair/validate offline.
+- **State:** restore into a fresh tree and activate offline; never merge into live state.
+- **Disk:** preserve the failed disk, recover from the succeeded snapshot, and validate privately.
 
-1. stop and preserve the affected host;
-2. create another verified backup if possible;
-3. restore the Azure OS-disk snapshot for whole-VM rollback, or provision a disposable recovery VM;
-4. use supported OpenClaw restore tooling only after checking the installed CLI help;
-5. validate config, Doctor, secrets, channels, tasks, and cron before serving traffic.
-
-`migrate.ps1` and `migrate-restore.sh` intentionally fail with exit 78 when no supported full restore exists. The verified archive remains available; failure must never trigger an ad-hoc destructive extraction.
-
-## Recovery Evidence
-
-Record, without secret values:
-
-- archive/Blob name and checksum;
-- OpenClaw version;
-- snapshot timestamp and Azure resource ID;
-- verification command and exit status;
-- restored disposable SQLite integrity result;
-- production channel/cron checks after a real rollback.
-
-Treat archives, disk snapshots, manifests, and diagnostic bundles as sensitive because they can contain credentials, private conversations, and memory.
+A package downgrade does **not** downgrade SQLite schemas. Restore compatible
+pre-upgrade shared and agent/session database snapshots before starting older
+code; otherwise remain stopped. Preserve archive checksum, snapshot provenance,
+verification results, and post-recovery channel checks without secret values.
+Archives, manifests, snapshots, and diagnostics can contain private conversations
+or credentials. Never rerun onboarding or broaden network access to recover.

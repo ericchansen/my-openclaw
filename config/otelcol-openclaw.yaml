@@ -1,0 +1,165 @@
+extensions:
+  health_check:
+    endpoint: 127.0.0.1:13133
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 127.0.0.1:4318
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 128
+    spike_limit_mib: 32
+
+  probabilistic_sampler/content:
+    sampling_percentage: ${env:OPENCLAW_OTEL_CONTENT_SAMPLE_PERCENT}
+    mode: proportional
+    fail_closed: true
+
+  transform/metadata:
+    error_mode: propagate
+    trace_statements:
+      - context: resource
+        statements:
+          - keep_keys(attributes, ["service.name", "service.version", "host.name", "cloud.provider", "cloud.platform", "cloud.region", "cloud.resource_id"])
+          - truncate_all(attributes, 256)
+      - context: span
+        statements:
+          - keep_keys(attributes, ["openclaw.agent", "openclaw.api", "openclaw.attempt", "openclaw.channel", "openclaw.context", "openclaw.delivery.kind", "openclaw.errorCategory", "openclaw.failureKind", "openclaw.harness.id", "openclaw.lane", "openclaw.model", "openclaw.model_call.observation_unit", "openclaw.outcome", "openclaw.provider", "openclaw.reason", "openclaw.skill.activation", "openclaw.skill.name", "openclaw.skill.source", "openclaw.source", "openclaw.state", "openclaw.toolName", "openclaw.transport", "openclaw.webhook", "gen_ai.operation.name", "gen_ai.provider.name", "gen_ai.request.model", "error.type"])
+          - truncate_all(attributes, 256)
+          - set(attributes["openclaw.telemetry.class"], "metadata")
+          - set(attributes["openclaw.telemetry.sanitized"], true)
+          - set(status.message, "")
+    metric_statements:
+      - context: resource
+        statements:
+          - keep_keys(attributes, ["service.name", "service.version", "host.name", "cloud.provider", "cloud.platform", "cloud.region", "cloud.resource_id"])
+          - truncate_all(attributes, 256)
+      - context: datapoint
+        statements:
+          - keep_keys(attributes, ["openclaw.agent", "openclaw.api", "openclaw.attempt", "openclaw.channel", "openclaw.context", "openclaw.delivery.kind", "openclaw.errorCategory", "openclaw.failureKind", "openclaw.lane", "openclaw.model", "openclaw.model_call.observation_unit", "openclaw.outcome", "openclaw.provider", "openclaw.reason", "openclaw.skill.activation", "openclaw.skill.name", "openclaw.skill.source", "openclaw.source", "openclaw.state", "openclaw.toolName", "openclaw.transport", "openclaw.webhook", "gen_ai.operation.name", "gen_ai.provider.name", "gen_ai.request.model", "gen_ai.token.type", "error.type"])
+          - truncate_all(attributes, 256)
+          - set(attributes["openclaw.telemetry.class"], "metadata")
+          - set(attributes["openclaw.telemetry.sanitized"], true)
+    log_statements:
+      - context: resource
+        statements:
+          - keep_keys(attributes, ["service.name", "service.version", "host.name", "cloud.provider", "cloud.platform", "cloud.region", "cloud.resource_id"])
+          - truncate_all(attributes, 256)
+      - context: log
+        statements:
+          - keep_keys(attributes, ["code.function.name", "code.namespace", "log.file.name", "log.record.uid", "openclaw.channel", "openclaw.errorCategory", "openclaw.outcome"])
+          - truncate_all(attributes, 256)
+          - set(body, "[CONTENT_WITHHELD]")
+          - set(attributes["openclaw.telemetry.class"], "metadata")
+          - set(attributes["openclaw.telemetry.sanitized"], true)
+
+  transform/content:
+    error_mode: propagate
+    trace_statements:
+      - context: resource
+        statements:
+          - keep_keys(attributes, ["service.name", "service.version", "host.name"])
+          - truncate_all(attributes, 128)
+      - context: span
+        statements:
+          - keep_keys(attributes, ["openclaw.agent", "openclaw.channel", "openclaw.model", "openclaw.provider", "openclaw.toolName", "openclaw.content.input_messages", "openclaw.content.output_messages", "openclaw.content.tool_definitions", "openclaw.content.tool_input", "openclaw.content.tool_output", "gen_ai.input.messages", "gen_ai.output.messages", "gen_ai.tool.call.arguments", "gen_ai.tool.call.result", "gen_ai.tool.definitions", "input.value", "input.mime_type", "output.value", "output.mime_type"])
+          - replace_all_patterns(attributes, "value", "(?i)(bearer|authorization|password|passwd|secret|token|api[_-]?key|client[_-]?secret)\\s*[:=]\\s*[^\\s,;\\]\\}\\\"]+", "$$1=[REDACTED]")
+          - replace_all_patterns(attributes, "value", "(?i)\\b(gh[pousr]_[A-Za-z0-9]{16,}|sk-[A-Za-z0-9_-]{16,}|eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,})\\b", "[REDACTED_TOKEN]")
+          - replace_all_patterns(attributes, "value", "(?i)\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b", "[REDACTED_EMAIL]")
+          - replace_all_patterns(attributes, "value", "\\b(?:[0-9]{1,3}\\.){3}[0-9]{1,3}\\b", "[REDACTED_IP]")
+          - replace_all_patterns(attributes, "value", "(?i)(command|prompt)\\s*[:=]\\s*[^\\n\\r]+", "$$1=[REDACTED_CONTENT]")
+          - truncate_all(attributes, 2048)
+          - set(attributes["openclaw.telemetry.class"], "sampled-redacted-content")
+          - set(attributes["openclaw.telemetry.sanitized"], true)
+          - set(status.message, "")
+    log_statements:
+      - context: log
+        statements:
+          - keep_keys(attributes, [])
+          - set(body, "[CONTENT_DROPPED]")
+          - set(attributes["openclaw.telemetry.class"], "sampled-redacted-content")
+          - set(attributes["openclaw.telemetry.sanitized"], true)
+
+  filter/content_schema:
+    error_mode: propagate
+    traces:
+      span:
+        - 'attributes["openclaw.telemetry.sanitized"] != true'
+    logs:
+      log_record:
+        - 'attributes["openclaw.telemetry.sanitized"] != true'
+
+  filter/metadata_schema:
+    error_mode: propagate
+    traces:
+      span:
+        - 'attributes["openclaw.telemetry.sanitized"] != true'
+    metrics:
+      datapoint:
+        - 'attributes["openclaw.telemetry.sanitized"] != true'
+    logs:
+      log_record:
+        - 'attributes["openclaw.telemetry.sanitized"] != true'
+
+  filter/drop_span_events:
+    error_mode: propagate
+    traces:
+      spanevent:
+        - 'true'
+
+  batch:
+    timeout: 5s
+    send_batch_size: 1
+    send_batch_max_size: 1
+
+exporters:
+  file/metadata:
+    path: ${env:OPENCLAW_OTEL_METADATA_OUTPUT_PATH}
+    format: json
+    rotation:
+      max_megabytes: 8
+      max_days: 7
+      max_backups: 14
+      localtime: false
+  file/content:
+    path: ${env:OPENCLAW_OTEL_CONTENT_OUTPUT_PATH}
+    format: json
+    rotation:
+      max_megabytes: 8
+      max_days: 7
+      max_backups: 14
+      localtime: false
+
+service:
+  telemetry:
+    logs:
+      level: warn
+      encoding: json
+    metrics:
+      level: none
+  extensions: [health_check]
+  pipelines:
+    traces/metadata:
+      receivers: [otlp]
+      processors: [memory_limiter, transform/metadata, filter/metadata_schema, filter/drop_span_events, batch]
+      exporters: [file/metadata]
+    metrics/metadata:
+      receivers: [otlp]
+      processors: [memory_limiter, transform/metadata, filter/metadata_schema, batch]
+      exporters: [file/metadata]
+    logs/metadata:
+      receivers: [otlp]
+      processors: [memory_limiter, transform/metadata, filter/metadata_schema, batch]
+      exporters: [file/metadata]
+    traces/content:
+      receivers: [otlp]
+      processors: [memory_limiter, probabilistic_sampler/content, transform/content, filter/content_schema, filter/drop_span_events, batch]
+      exporters: [file/content]
+    logs/content:
+      receivers: [otlp]
+      processors: [memory_limiter, probabilistic_sampler/content, transform/content, filter/content_schema, batch]
+      exporters: [file/content]
