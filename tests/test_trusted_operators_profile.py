@@ -25,6 +25,28 @@ class TrustedOperatorProfileTests(unittest.TestCase):
         self.assertEqual(patch["tools"]["agentToAgent"]["allow"], ["main", "orchestrator", "fitness"])
         self.assertEqual(patch["messages"], {"groupChat": {"visibleReplies": "automatic"}})
 
+    def test_inline_eval_override_is_explicit_and_limited_to_trusted_agents(self):
+        patch = json.loads((ROOT / "config/openclaw-trusted-operators.patch.json").read_text())
+        self.assertNotIn("exec", patch["tools"])
+        for filename in ("openclaw.template.json", "openclaw-quality.patch.json"):
+            baseline = json.loads((ROOT / "config" / filename).read_text())
+            global_exec = baseline["tools"]["exec"]
+            self.assertTrue(global_exec["strictInlineEval"])
+            for agent_id in ("main", "orchestrator", "fitness", "healthcheck"):
+                with self.subTest(baseline=filename, agent=agent_id):
+                    baseline_agent = baseline["agents"]["entries"].get(agent_id, {})
+                    overlay_agent = patch["agents"]["entries"].get(agent_id, {})
+                    effective_exec = {
+                        **global_exec,
+                        **baseline_agent.get("tools", {}).get("exec", {}),
+                        **overlay_agent.get("tools", {}).get("exec", {}),
+                    }
+                    if agent_id == "healthcheck":
+                        self.assertTrue(effective_exec["strictInlineEval"])
+                    else:
+                        self.assertIs(overlay_agent["tools"]["exec"]["strictInlineEval"], False)
+                        self.assertIs(effective_exec["strictInlineEval"], False)
+
 
 if __name__ == "__main__":
     unittest.main()

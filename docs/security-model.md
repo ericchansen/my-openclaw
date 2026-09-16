@@ -67,12 +67,25 @@ are disabled explicitly: `tools.fs.workspaceOnly: false` alone does not remove
 OS privileges and connected-account authority; with Docker membership, treat
 this as host-administrator trust, not merely shared file access.
 
+The overlay also sets `tools.exec.strictInlineEval: false` on each of those
+three agents. This is independent of `exec.mode: full`: an inherited
+`strictInlineEval: true` still requires reviewer or human approval for inline
+interpreters such as `node -e` and `python -c`, including within pipelines.
+Disabling it is intentional for these reviewed host administrators, not a
+general recommendation. The global baseline keeps the gate enabled, so the
+healthcheck and any separately configured isolated agents do not inherit this
+exemption.
+
 Specialist workspaces remain their instruction, skill, and default-directory
 locations, not security boundaries. The overlay does not replace workspace,
 agent-directory, skill, model, or memory settings. Conversation keys and original
 history stay separate; session visibility is shared and the active agents can
 delegate to one another. The healthcheck agent remains sandboxed and exec-only.
-Old restricted-agent workspaces and histories are retained, not deleted.
+The production roster is `main`, `orchestrator`, `fitness`, and `healthcheck`.
+Legacy isolated agents and their housekeeping jobs are retired with operator
+approval; recovery history belongs in private backups, not unused live agents.
+Use the [retirement procedure](operations.md#retiring-unused-agents) rather than
+deleting database files or dropping agent definitions alone.
 
 Normal requests in the trusted groups use
 [automatic final replies](https://docs.openclaw.ai/channels/groups#visible-replies).
@@ -96,6 +109,33 @@ and actual cross-workspace file-edit/exec receipts. Exercise connected-service
 tools without exposing account contents. Authorization checks must use the
 registered channel plugin; a bare helper import has no channel normalization.
 Do not equate CLI/operator checks with observed human-client ingress.
+
+### Administration from trusted conversations
+
+Full host access does not remove every upstream model-tool restriction. In
+2026.9.2, the native `automations` tool still restricts cross-conversation and
+operator-created jobs; its Gateway-wide management grant is specific to an
+authenticated Control UI administrator turn. Owner allowlists, session visibility,
+and filesystem access are not substitutes for that grant.
+
+The trusted-operator profile already permits a separate supported route: use
+ordinary host `exec` to run the installed, authenticated `openclaw automations`
+CLI. Install the [trusted-operator administration skill](../workspace/skills/trusted-operator-admin/SKILL.md)
+only in the reviewed active workspaces and reference it in their existing
+instructions. Do not copy it over specialist instructions or apply it as a
+permission grant to the isolated baseline. Agents sharing a workspace share its
+skill; retain separate copies for specialists with distinct workspaces.
+
+This route keeps real job ownership and scheduled execution policy intact.
+Never forge a Control UI identity, remove caller metadata, inject an operator
+token, or rewrite SQLite to defeat the native tool's scope. An authorization
+failure from the configured CLI remains a blocker.
+
+The pinned Copilot harness also rejects the delegated `openclaw` expert's
+in-memory turn with `canonical transcript persistence requires an exact runtime
+session target`. Interactive Astra conversations and ordinary host CLI execution
+are separate paths. Use the supported CLI for authorized administration without
+claiming the delegated expert is repaired or changing the default model/runtime.
 
 ## Host, Azure, and telemetry risks
 

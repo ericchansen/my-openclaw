@@ -62,6 +62,55 @@ Preserve existing approved family configuration; future identity/sharing changes
 need explicit review, not an implicit grant from this upgrade.
 For the current production model use the prerequisite-gated [Astra overlay](astra-model.md).
 
+### Trusted operator blocked by a model-facing tool
+
+For `strict inline-eval mode requires reviewer or explicit approval`, inspect
+both the global and active agent's `tools.exec.strictInlineEval`. `mode: full`
+does not disable that independent gate. The reviewed trusted-operator overlay
+sets it to `false` only for `main`, `orchestrator`, and `fitness`; keep the global
+and isolated-agent policies intact. Use the installed schema to confirm hot-reload
+support, then verify harmless inline interpreter execution through the actual
+agent tool rather than direct SSH. Old closed approval requests are not resumed
+or approved by changing the policy.
+
+First verify the active agent's full host exec policy and the requesting sender's
+reviewed operator grant. In the opt-in production profile, use the
+[trusted-operator administration skill](../workspace/skills/trusted-operator-admin/SKILL.md)
+and the existing authenticated host CLI for cross-conversation jobs. A native
+`automations` ownership denial or the Copilot delegated-expert transcript-target
+error does not establish that this independent administration path is unavailable.
+The [security model](security-model.md#administration-from-trusted-conversations)
+documents the distinction and limits.
+
+Preserve the job's stable ID, attribution, timing, destination, and future repeats.
+Read back narrow edits; for deterministic checks, prefer canonical saved records
+and an existing command checker over a model reading another conversation.
+Prove administrative edits with a disposable disabled, no-delivery job rather
+than replaying personal reminders. Verify the affected channel session separately;
+an operator-injected diagnostic is not proof of real human-message ingress.
+
+### Retiring unused agents
+
+After explicit operator approval, inspect the exact agent's routes, delegation
+and credential ownership, automations, active tasks, and workspace/state paths.
+No chat bindings does not mean no scheduled work: legacy agents can still have
+enabled skill-review jobs and disabled heartbeat jobs. Preserve personal jobs
+and active assistants; retire only housekeeping owned by the removed agents.
+
+Follow the pre-change recovery procedure, including verified SQLite backups of
+shared state and initialized agent databases before removing canonical history.
+Inspect the installed `agents delete --help` and use
+`openclaw agents delete <reviewed-agent-id> --force --json` against the reachable,
+authenticated Gateway. The pinned supported deletion flow removes associated
+jobs and prunes owned workspace/state while protecting shared paths and
+credential owners. Do not substitute config-only removal or hand-edit SQLite.
+
+Inspect deletion results for failed paths, failed session purges, retained shared
+workspaces, or skipped cron cleanup; those are incomplete retirement, not success.
+Verify the remaining roster, exact expected job removals, unchanged surviving
+jobs/configuration, Gateway health, and active channel routes. Keep recovery
+artifacts private and never prune the restricted healthcheck as legacy.
+
 ## Stable updates
 
 Existing-host [infrastructure deployment](../deploy.ps1) is snapshot-guarded and
