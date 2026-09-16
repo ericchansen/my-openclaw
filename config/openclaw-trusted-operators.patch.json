@@ -3,17 +3,17 @@
     "entries": {
       "main": {
         "sandbox": {"mode": "off"},
-        "tools": {"profile": "full", "exec": {"mode": "full", "applyPatch": {"workspaceOnly": false}}, "fs": {"workspaceOnly": false}, "elevated": {"enabled": true}},
+        "tools": {"profile": "full", "exec": {"mode": "full", "strictInlineEval": false, "applyPatch": {"workspaceOnly": false}}, "fs": {"workspaceOnly": false}, "elevated": {"enabled": true}},
         "subagents": {"allowAgents": ["main", "orchestrator", "fitness"]}
       },
       "orchestrator": {
         "sandbox": {"mode": "off"},
-        "tools": {"profile": "full", "exec": {"mode": "full", "applyPatch": {"workspaceOnly": false}}, "fs": {"workspaceOnly": false}, "elevated": {"enabled": true}},
+        "tools": {"profile": "full", "exec": {"mode": "full", "strictInlineEval": false, "applyPatch": {"workspaceOnly": false}}, "fs": {"workspaceOnly": false}, "elevated": {"enabled": true}},
         "subagents": {"allowAgents": ["main", "orchestrator", "fitness"]}
       },
       "fitness": {
         "sandbox": {"mode": "off"},
-        "tools": {"profile": "full", "exec": {"mode": "full", "applyPatch": {"workspaceOnly": false}}, "fs": {"workspaceOnly": false}, "elevated": {"enabled": true}},
+        "tools": {"profile": "full", "exec": {"mode": "full", "strictInlineEval": false, "applyPatch": {"workspaceOnly": false}}, "fs": {"workspaceOnly": false}, "elevated": {"enabled": true}},
         "subagents": {"allowAgents": ["main", "orchestrator", "fitness"], "delegationMode": "prefer"}
       }
     }
