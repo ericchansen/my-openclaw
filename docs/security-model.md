@@ -1,6 +1,6 @@
 # Runtime security model
 
-Official OpenClaw 2026.9.2 is pinned in [runtime-versions.json](../config/runtime-versions.json).
+The reproducible deployment baseline is pinned in [runtime-versions.json](../config/runtime-versions.json).
 The runtime upgrade preserves existing approved routing, credentials, and data.
 The isolated baseline and explicitly opted-in trusted-operator profile below are
 different deployment policies, not requirements of the upstream runtime.
@@ -101,8 +101,8 @@ Do not equate CLI/operator checks with observed human-client ingress.
 
 [Docker-group access](https://docs.docker.com/engine/install/linux-postinstall/) is
 root-equivalent; native plugins also execute within the Gateway boundary. Keep
-exact pins, the [install policy](../scripts/openclaw-install-policy.py), and explicit
-plugin allowlisting; append reviewed entries rather than replacing existing lists.
+the [install policy](../scripts/openclaw-install-policy.py) and explicit plugin
+allowlisting; append reviewed entries rather than replacing existing lists.
 The VM identity retains subscription-wide Contributor and Cost Management Contributor
 by owner decision. Keep host/Azure mutations trusted-operator-triggered and identity-audited.
 Future private-endpoint/NAT cutover is deferred, not a deployed isolation guarantee.
@@ -118,3 +118,42 @@ host access, retained specialist identity, and rejected unapproved senders;
 browser SSRF policy remains independent. Follow [operations](operations.md) and
 [availability acceptance](availability-recovery.md); a passing canary does not
 establish perfect isolation.
+
+### Install policy versus reproducibility pins
+
+The helper enforces **protocol v1, source trust, and identity consistency**, not a
+particular OpenClaw release. A newer core version does not disable plugin or skill
+installation. Unknown protocols and malformed provenance still fail closed.
+OpenClaw itself retains package compatibility, integrity, capability-consent, and
+dependency-boundary checks; allowing a policy request does not bypass those checks.
+
+The npm allowlist is only `@openclaw/copilot` (`copilot`) and
+`@openclaw/diagnostics-otel` (`diagnostics-otel`), not the whole `@openclaw` scope.
+They require immutable, network-backed npm provenance. The upstream `third-party`
+authority label is accepted for these exact registry identities because direct
+npm installs use it; unknown/user provenance, local copies, git/URL/alias sources,
+version ranges, and non-stable tags/releases do not gain unattended approval.
+Exact stable versions, including OpenClaw's numeric calendar correction releases
+(for example `2030.1.1-1`), need no policy edit.
+
+Bare package names and `@latest`/`@stable` (with an optional `npm:` prefix) may enter
+the normal registry resolver. Protocol v1 npm preflight omits the resolved version,
+so preflight approval is **not approval of an arbitrary resolved artifact**:
+the subsequent `plugin-package` check requires an exact stable package version.
+Every supplied package name, plugin/manifest ID, target, and version must agree.
+An exact requested version must match the staged package; it is never treated as
+`latest`. The later `plugin-dependency-tree` check omits the version again and
+relies on OpenClaw's preceding package scan. The helper does not resolve tags or
+fetch packages itself; staged package versions refer to `package.json`, not the
+independently versioned `openclaw.plugin.json` manifest.
+
+Immutable official bundled/managed content remains allowed. ClawHub content and
+other untrusted/third-party sources still require explicit operator review;
+`warn` denies unattended installation, rather than silently allowing it.
+
+The manifest's exact versions and checksums serve reproducible provisioning,
+testing, and rollback, not a global runtime update veto. Updating an official
+stable release does not require copying its version into this policy. Separately,
+explicit user pins in runtime configuration remain binding: this helper neither
+edits configuration nor removes pins, and the repository's pinned provisioning
+and maintenance scripts continue to use the manifest.

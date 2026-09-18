@@ -1,6 +1,6 @@
 {
   "protocolVersion": 1,
-  "openclawVersion": "2026.9.1",
+  "openclawVersion": "2030.1.1",
   "targetType": "skill",
   "targetName": "future-skill",
   "sourcePath": "/var/lib/openclaw-policy-fixture/future",

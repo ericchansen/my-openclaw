@@ -133,7 +133,7 @@ Invoke-Check "Registry integrity and install-policy decisions" {
             ConvertFrom-Json
         Assert-True ($LASTEXITCODE -eq 0) "Install policy fixture failed."
         $expected = if ($_.Name -like "*block-*") { "block" }
-            elseif ($_.Name -like "*review-*" -or $_.Name -eq "install-policy-allow-pinned-npm.json") { "warn" }
+            elseif ($_.Name -like "*review-*") { "warn" }
             else { "allow" }
         Assert-True ($result.protocolVersion -eq 1 -and $result.decision -eq $expected) "Wrong decision for $($_.Name)."
     }

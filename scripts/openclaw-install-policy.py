@@ -1,21 +1,18 @@
 #!/usr/bin/env python3
-"""Fail-closed OpenClaw 2026.9.2 install-policy protocol v1 helper."""
+"""Fail-closed OpenClaw install-policy protocol v1 helper."""
 
 import json
+import re
 import sys
 
 
 PROTOCOL_VERSION = 1
-OPENCLAW_VERSION = "2026.9.2"
 MAX_INPUT_BYTES = 256 * 1024
-EXACT_PACKAGES = {
-    "@openclaw/diagnostics-otel": "2026.9.2",
-    "@openclaw/copilot": "2026.9.2",
-}
-EXACT_PLUGIN_IDS = {
+OFFICIAL_NPM_PLUGINS = {
     "@openclaw/diagnostics-otel": "diagnostics-otel",
     "@openclaw/copilot": "copilot",
 }
+STABLE_SELECTORS = {None, "latest", "stable"}
 OFFICIAL_KINDS = {"bundled", "managed"}
 OFFICIAL_AUTHORITIES = {"openclaw", "official"}
 
@@ -35,14 +32,89 @@ def block(reason: str) -> None:
     respond("block", reason)
 
 
-def parse_exact_npm_specifier(specifier: str) -> tuple[str, str] | None:
+def parse_npm_specifier(specifier: str) -> tuple[str, str | None] | None:
     value = specifier.strip()
     if value.startswith("npm:"):
         value = value[4:]
     split_at = value.rfind("@")
-    if split_at <= 0 or split_at == len(value) - 1:
+    package, selector = (
+        (value[:split_at], value[split_at + 1 :]) if split_at > 0 else (value, None)
+    )
+    if not re.fullmatch(r"(?:@[a-z0-9][a-z0-9._~-]*/)?[a-z0-9][a-z0-9._~-]*", package):
         return None
-    return value[:split_at], value[split_at + 1 :]
+    return package, selector
+
+
+def is_stable_version(version: object) -> bool:
+    if not isinstance(version, str):
+        return False
+    if re.fullmatch(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)", version):
+        return True
+    # OpenClaw treats YYYY.M.P-N as a stable correction, not a prerelease.
+    return re.fullmatch(r"[1-9][0-9]{3}\.(?:[1-9]|1[0-2])\.[1-9][0-9]*-[1-9][0-9]*", version) is not None
+
+
+def allow_official_npm(request: dict, parsed: tuple[str, str | None] | None) -> bool:
+    source, operation = request["source"], request["request"]
+    plugin, origin = request.get("plugin"), request["origin"]
+    if (
+        not parsed
+        or parsed[0] not in OFFICIAL_NPM_PLUGINS
+        or request["targetType"] != "plugin"
+        or operation["kind"] not in {"plugin-npm", "plugin-dir"}
+        or source["kind"] != "npm"
+        or source["authority"] not in OFFICIAL_AUTHORITIES | {"third-party"}
+        or source["mutable"] is not False
+        or source["network"] is not True
+        or not isinstance(plugin, dict)
+    ):
+        return False
+
+    package, selector = parsed
+    plugin_id = OFFICIAL_NPM_PLUGINS[package]
+    exact_version = selector.removeprefix("v") if isinstance(selector, str) else None
+    if selector not in STABLE_SELECTORS and not is_stable_version(exact_version):
+        return False
+    if (
+        request["targetName"] != plugin.get("pluginId")
+        or plugin.get("pluginId") not in {plugin_id, package}
+        or ("manifestId" in plugin and plugin["manifestId"] != plugin_id)
+    ):
+        return False
+    versions = []
+    for metadata in (plugin, origin):
+        if "packageName" in metadata and metadata["packageName"] != package:
+            return False
+        if "version" in metadata:
+            version = metadata["version"]
+            if not is_stable_version(version):
+                return False
+            if selector not in STABLE_SELECTORS and version != exact_version:
+                return False
+            versions.append(version)
+    if len(set(versions)) > 1:
+        return False
+
+    if origin["type"] == "plugin-npm":
+        # v1 preflight has no resolved version; the package scan below must follow.
+        return (
+            plugin.get("contentType") == "package"
+            and plugin.get("packageName") == package
+            and origin.get("packageName") == package
+        )
+    if request["sourcePathKind"] != "directory" or plugin.get("pluginId") != plugin_id:
+        return False
+    if origin["type"] == "plugin-package":
+        return (
+            plugin.get("contentType") == "package"
+            and plugin.get("packageName") == package
+            and is_stable_version(plugin.get("version"))
+        )
+    # Upstream scans the dependency tree after the versioned package scan.
+    return (
+        origin["type"] == "plugin-dependency-tree"
+        and plugin.get("contentType") == "dependency-tree"
+    )
 
 
 def main() -> int:
@@ -58,11 +130,14 @@ def main() -> int:
     if not isinstance(request, dict):
         block("policy request must be a JSON object")
         return 0
-    if request.get("protocolVersion") != PROTOCOL_VERSION:
+    if type(request.get("protocolVersion")) is not int or request["protocolVersion"] != PROTOCOL_VERSION:
         block("unsupported install-policy protocol version")
         return 0
-    if request.get("openclawVersion") != OPENCLAW_VERSION:
-        block("install policy is pinned to OpenClaw 2026.9.2")
+    if any(
+        not isinstance(request.get(field), str) or not request[field].strip()
+        for field in ("openclawVersion", "targetName", "sourcePath")
+    ) or request.get("sourcePathKind") not in {"file", "directory"}:
+        block("install request metadata is incomplete or unsupported")
         return 0
     if request.get("targetType") not in {"skill", "plugin"}:
         block("unsupported install target")
@@ -70,7 +145,14 @@ def main() -> int:
 
     source = request.get("source")
     operation = request.get("request")
-    if not isinstance(source, dict) or not isinstance(operation, dict):
+    origin = request.get("origin")
+    if (
+        not isinstance(source, dict)
+        or not isinstance(operation, dict)
+        or not isinstance(origin, dict)
+        or not isinstance(origin.get("type"), str)
+        or not origin["type"].strip()
+    ):
         block("install source provenance is required")
         return 0
     kind = source.get("kind")
@@ -110,6 +192,26 @@ def main() -> int:
         block("install request provenance is incomplete or unsupported")
         return 0
 
+    if (request["targetType"] == "skill") != (request_kind == "skill-install"):
+        block("install target and request kind disagree")
+        return 0
+    specifier = operation.get("requestedSpecifier")
+    if "requestedSpecifier" in operation and (not isinstance(specifier, str) or not specifier.strip()):
+        block("invalid requested specifier")
+        return 0
+    plugin = request.get("plugin")
+    if "plugin" in request and (
+        not isinstance(plugin, dict)
+        or any(
+            field in plugin and (not isinstance(plugin[field], str) or not plugin[field])
+            for field in ("pluginId", "contentType", "packageName", "manifestId", "version")
+        )
+        or ("pluginId" in plugin and plugin["pluginId"] != request["targetName"])
+    ):
+        block("plugin metadata is invalid or disagrees with the target")
+        return 0
+    parsed_specifier = parse_npm_specifier(specifier) if isinstance(specifier, str) else None
+
     if kind == "clawhub":
         respond(
             "warn",
@@ -117,77 +219,38 @@ def main() -> int:
         )
         return 0
 
-    if kind in OFFICIAL_KINDS and authority in OFFICIAL_AUTHORITIES and mutable is False:
-        respond("allow")
-        return 0
-
-    if (
-        request_kind == "plugin-npm"
-        and kind == "npm"
-        and mutable is False
-        and network is True
-    ):
-        specifier = operation.get("requestedSpecifier")
-        plugin = request.get("plugin")
-        parsed = parse_exact_npm_specifier(specifier) if isinstance(specifier, str) else None
-        if parsed:
-            package, version = parsed
-            expected_plugin_id = EXACT_PLUGIN_IDS.get(package)
-            metadata_compatible = (
-                not isinstance(plugin, dict)
-                or (
-                    plugin.get("packageName") in {None, package}
-                    and plugin.get("version") in {None, version}
-                    and plugin.get("pluginId") in {None, expected_plugin_id, package}
-                )
-            )
-            target_compatible = (
-                expected_plugin_id is not None
-                and request.get("targetName") in {expected_plugin_id, package}
-            )
-            if (
-                EXACT_PACKAGES.get(package) == version
-                and metadata_compatible
-                and target_compatible
-            ):
-                respond("allow")
-                return 0
-
-    plugin = request.get("plugin")
-    if (
-        request_kind in {"plugin-npm", "plugin-dir"}
-        and kind == "npm"
-        and mutable is False
-        and network is True
-        and isinstance(plugin, dict)
-        and isinstance(plugin.get("packageName"), str)
-        and EXACT_PACKAGES.get(plugin["packageName"]) == plugin.get("version")
-        and EXACT_PLUGIN_IDS.get(plugin["packageName"]) == plugin.get("pluginId")
-        and plugin.get("pluginId") == request.get("targetName")
-    ):
-        respond("allow")
-        return 0
-
-    parsed_specifier = (
-        parse_exact_npm_specifier(operation.get("requestedSpecifier"))
-        if isinstance(operation.get("requestedSpecifier"), str)
-        else None
-    )
-    if (
-        request.get("targetName") in EXACT_PLUGIN_IDS.values()
+    official_npm_identity = (
+        request["targetName"] in OFFICIAL_NPM_PLUGINS
+        or request["targetName"] in OFFICIAL_NPM_PLUGINS.values()
         or (
             isinstance(plugin, dict)
             and (
-                plugin.get("pluginId") in EXACT_PLUGIN_IDS.values()
-                or plugin.get("packageName") in EXACT_PACKAGES
+                plugin.get("pluginId") in OFFICIAL_NPM_PLUGINS.values()
+                or plugin.get("packageName") in OFFICIAL_NPM_PLUGINS
             )
         )
+        or origin.get("packageName") in OFFICIAL_NPM_PLUGINS
         or (
             parsed_specifier is not None
-            and parsed_specifier[0] in EXACT_PACKAGES
+            and parsed_specifier[0] in OFFICIAL_NPM_PLUGINS
         )
+    )
+    if (
+        kind in OFFICIAL_KINDS
+        and authority in OFFICIAL_AUTHORITIES
+        and mutable is False
+        and request_kind != "plugin-npm"
+        and not (parsed_specifier and official_npm_identity)
     ):
-        block("official plugin source or version does not match the reviewed immutable pin")
+        respond("allow")
+        return 0
+
+    if allow_official_npm(request, parsed_specifier):
+        respond("allow")
+        return 0
+
+    if official_npm_identity:
+        block("official plugin requires consistent registry identity and a stable immutable release")
         return 0
 
     if authority in {"third-party", "unknown", "user"} or mutable:
