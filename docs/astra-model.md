@@ -24,7 +24,10 @@ This diagnostic exception does not change the active assistants' Astra selection
    current model/plugin configuration; follow [maintenance guards](operations.md#stable-updates).
 2. Deploy the current [install-policy helper](../scripts/openclaw-install-policy.py).
    Verify the exact Copilot package's npm integrity against the manifest and
-   review its capabilities before accepting them.
+   review its capabilities before accepting them. These are reproducible baseline
+   instructions, not a policy version lock: future official stable releases do not
+   require helper edits. See [policy versus pins](security-model.md#install-policy-versus-reproducibility-pins);
+   preserve any explicit runtime configuration pins.
 3. In the controlled plugin-maintenance window, install the official pinned package:
 
    ```bash
