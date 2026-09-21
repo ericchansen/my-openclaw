@@ -9,8 +9,10 @@ import sys
 PROTOCOL_VERSION = 1
 MAX_INPUT_BYTES = 256 * 1024
 OFFICIAL_NPM_PLUGINS = {
-    "@openclaw/diagnostics-otel": "diagnostics-otel",
+    "@openclaw/brave-plugin": "brave",
     "@openclaw/copilot": "copilot",
+    "@openclaw/diagnostics-otel": "diagnostics-otel",
+    "@openclaw/discord": "discord",
 }
 STABLE_SELECTORS = {None, "latest", "stable"}
 OFFICIAL_KINDS = {"bundled", "managed"}
