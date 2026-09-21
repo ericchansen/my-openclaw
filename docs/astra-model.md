@@ -1,22 +1,29 @@
 # GPT-6 Astra through the official Copilot harness
 
-Production selects `github-copilot/gpt-6-astra` through official
+Astra is available. The interactive default is GPT-5.6 Sol Fast extra-high with
+Claude Opus 5 extra-high fallback because running Astra as the main agent through
+`agentRuntime: {"id": "copilot"}` injected Copilot-harness instructions the model
+would not name. That opacity showed up as vague "execution constraints" /
+"assistant-side rules" and blocked authorized maintenance.
+
+Agents may still select Astra, or any other catalog model, when it fits the work.
+The [Astra overlay](../config/openclaw-astra.patch.json) registers
+`agentRuntime: {"id": "copilot"}` for the Astra model id and currently defaults
+the coding orchestrator to Astra. That is a default, not a ban.
+
+Historical note: production previously selected `github-copilot/gpt-6-astra` through official
 `@openclaw/copilot@2026.9.2` with SDK **1.0.11**, on unmodified OpenClaw 2026.9.2.
 Exec/history and Telegram workflows worked with this integration; that does not
 establish that all built-in provider schema issues are fixed.
 See the [official Copilot integration](https://docs.openclaw.ai/plugins/copilot)
 and [package versions/integrities](../config/runtime-versions.json).
 
-The [Astra overlay](../config/openclaw-astra.patch.json) sets model-specific
-`agentRuntime: {"id": "copilot"}` only for Astra. Sonnet 5 remains fallback on the
-built-in runtime. The default template and [Sonnet recovery overlay](../config/openclaw-model-reliability.patch.json)
-remain valid baselines until the official plugin and CLI-path prerequisites exist.
-
-The isolated healthcheck explicitly uses native Luna with native Sonnet fallback,
-not the interactive default. The deployed Copilot SDK receipt omits the native
-exec exit-code/status fields required by the [canary](../scripts/openclaw-availability-check.py).
-Keep that proof strict rather than treating echoed output as successful execution.
-This diagnostic exception does not change the active assistants' Astra selection.
+The template `healthcheck` entry has no model, so it inherits the native default.
+A Copilot-harness model is a poor canary: the deployed Copilot SDK receipt omits
+the native exec exit-status fields required by the
+[availability checker](../scripts/openclaw-availability-check.py). Live may pin a
+native utility model for that probe. Keep the proof strict rather than treating
+echoed output as successful execution.
 
 ## Install prerequisites, then apply
 
@@ -48,8 +55,7 @@ This diagnostic exception does not change the active assistants' Astra selection
 7. Dry-run the overlay with `openclaw config patch --file <astra-patch> --dry-run`,
    apply using the supported CLI, and validate configuration. Review any existing
    agent-specific model overrides separately; leave utility, heartbeat, and
-   managed background models unchanged, except for the explicit native
-   healthcheck assignment above.
+   managed background models unchanged unless you intend to change them.
 8. Perform one controlled Gateway restart to load the environment. Exercise
    real exec/history and channel delivery, inspecting effective model,
    `agentHarnessId: "copilot"`, and successful tool receipts.
@@ -69,7 +75,7 @@ in the repository manifest. Neither SDK nor CLI source was patched.
 
 ## Fallback and rollback
 
-Restore saved default and affected agent model settings to return to Sonnet;
+Restore saved default and affected agent model settings to return to Sol Fast;
 validate, restart if needed, and confirm the effective model on a real turn.
 Do not delete conversations, remove authentication, or relax isolation to switch
 models. Removing the optional plugin or persisted SDK state is a separate reviewed

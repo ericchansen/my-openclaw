@@ -36,8 +36,9 @@ Prefer isolated context. Use forked context only when the child needs the curren
 The template uses:
 
 - parent concurrency: 4;
-- parent model: GPT-5.6 Sol, high thinking;
+- parent model default: GPT-5.6 Sol Fast, extra-high thinking;
 - low-risk child default: GPT-5.6 Luna, low thinking;
+- Astra and other catalog models remain available;
 - delegation mode: prefer;
 - child concurrency: 4;
 - maximum spawn depth: 2;
@@ -46,11 +47,11 @@ The template uses:
 
 These are upper bounds, not targets. A single parent often needs zero or one child. Avoid fan-out where the merge cost exceeds the parallel gain.
 
-Sol is the control plane, not merely the most expensive worker. It keeps the user conversation, scope decisions, integration, and final verification. The Luna default is only a safe economy for bounded low-risk work. Every spawn should select its model and thinking level explicitly: use Sol/high for development, multi-source research, ambiguous synthesis, and sensitive decisions. Use Luna/low for mechanical extraction, formatting, or deterministic tool work. Choose Sol when classification is uncertain.
+The parent keeps the user conversation, scope decisions, integration, and final verification. Luna/low is a reasonable economy for bounded low-risk work. Pick a model and thinking level per lane: Sol Fast extra-high is the current default for development, research, synthesis, and sensitive decisions; Astra is fine for coding orchestration; Luna/low fits mechanical extraction, formatting, or deterministic tool work.
 
 ## Repository Lane
 
-For substantial code changes, the parent may create one native child that launches external Copilot CLI. That child owns the external process and reports through native completion. Copilot/tmux is never the top-level orchestration system, never contacts the user, and never decides completion. See `workspace/skills/copilot-cli/SKILL.md`.
+For substantial code changes, the parent may run Copilot CLI itself or spawn a native child that runs it. That is optional. The process should not contact the user or decide completion on its own. See `workspace/skills/copilot-cli/SKILL.md`.
 
 ## Evidence and Recovery
 

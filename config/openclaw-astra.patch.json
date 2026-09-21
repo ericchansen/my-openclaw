@@ -1,35 +1,31 @@
 {
   "agents": {
     "defaults": {
-      "model": {
-        "primary": "github-copilot/gpt-6-astra",
-        "fallbacks": ["github-copilot/claude-sonnet-5"]
-      },
       "models": {
         "github-copilot/gpt-6-astra": {
           "alias": "astra",
-          "agentRuntime": {"id": "copilot"}
+          "agentRuntime": {
+            "id": "copilot"
+          }
         }
       }
     },
     "entries": {
-      "healthcheck": {
-        "model": {
-          "primary": "github-copilot/gpt-5.6-luna",
-          "fallbacks": ["github-copilot/claude-sonnet-5"]
-        }
-      },
       "orchestrator": {
         "model": {
           "primary": "github-copilot/gpt-6-astra",
-          "fallbacks": ["github-copilot/claude-sonnet-5"]
+          "fallbacks": [
+            "github-copilot/gpt-5.6-sol-fast"
+          ]
         }
       }
     }
   },
   "plugins": {
     "entries": {
-      "copilot": {"enabled": true}
+      "copilot": {
+        "enabled": true
+      }
     }
   }
 }

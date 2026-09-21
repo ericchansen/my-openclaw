@@ -1,10 +1,14 @@
-# HEARTBEAT.md
+# HEARTBEAT.md is retired
 
-Keep only a few useful, context-aware checks here. If nothing requires attention, reply `HEARTBEAT_OK`.
+OpenClaw no longer creates `HEARTBEAT.md` in new workspaces or reads it at runtime. Heartbeat instructions now live in the system-owned monitor scratch in the shared state database.
 
-- Review urgent failures or deadlines since the last check.
-- Check active commitments for a real blocker or material state change.
-- Alert only when the user can act or should know now.
-- Keep classification in the heartbeat turn. If substantive work is needed, spawn one bounded child with an explicit model and thinking level, then let the parent verify its evidence.
+Manage the current monitor scratch with the monitor job id from `openclaw automations list --all`:
 
-Do not duplicate automations, poll child sessions, or perform exact-time work here. Never include secrets or private message content in alerts.
+```bash
+openclaw automations scratch <jobId>
+openclaw automations scratch <jobId> --set "..."
+openclaw automations scratch <jobId> --file notes.md
+openclaw automations scratch <jobId> --unset
+```
+
+If an older workspace still contains `HEARTBEAT.md`, run `openclaw doctor --fix`. Doctor imports its instructions into monitor scratch, converts valid legacy `tasks:` entries into cron jobs, archives the original under the state directory, and removes the workspace file.

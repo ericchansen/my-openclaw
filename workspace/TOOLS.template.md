@@ -26,7 +26,6 @@ Use managed identity and allowlisted SecretRef resolution. Do not export a vault
 
 - Commands should have bounded timeouts and output.
 - Preserve existing channel, Gmail hook, automation, identity, and auth-profile configuration during changes.
-- Use native `sessions_spawn` / `sessions_yield` for delegated work. External coding tools run only inside their owning native child.
-- Prefer deterministic `openclaw automations` commands for exact jobs and the task ledger for observing detached work.
+- Prefer deterministic `openclaw automations` commands for exact jobs.
 
 Keep this file short, current, and safe to read at session start.
