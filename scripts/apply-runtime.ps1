@@ -163,6 +163,7 @@ $installArgs = @(
     "--key-vault", $KeyVaultName,
     "--storage-account", $StorageAccountName,
     "--storage-container", $StorageContainerName,
+    "--resource-group", $ResourceGroupName,
     "--openclaw-version", $versions.openclaw.version,
     "--openclaw-integrity", $versions.openclaw.npmIntegrity,
     "--diagnostics-otel-version", $versions.packages.'@openclaw/diagnostics-otel'.version,

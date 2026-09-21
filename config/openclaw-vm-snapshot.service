@@ -1,0 +1,22 @@
+[Unit]
+Description=Create and retain automated OpenClaw VM OS-disk snapshots
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=__OPENCLAW_USER__
+Environment=HOME=/home/__OPENCLAW_USER__
+EnvironmentFile=/etc/openclaw/runtime.env
+StateDirectory=openclaw-vm-snapshot
+StateDirectoryMode=0700
+RuntimeDirectory=openclaw-vm-snapshot
+RuntimeDirectoryMode=0700
+UMask=0077
+ExecStart=/usr/local/sbin/openclaw-create-vm-snapshot
+PrivateTmp=true
+NoNewPrivileges=true
+TimeoutStartSec=2h
+Nice=10
+CPUWeight=20
+IOWeight=20

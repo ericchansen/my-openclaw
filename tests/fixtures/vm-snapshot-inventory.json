@@ -1,0 +1,24 @@
+[
+  {
+    "name": "openclaw-auto-weekly-20260921T000000Z",
+    "provisioningState": "Succeeded",
+    "incremental": true,
+    "sourceResourceId": "/subscriptions/test/resourceGroups/test/providers/Microsoft.Compute/disks/os",
+    "tags": {
+      "purpose": "openclaw-automated-backup",
+      "retention": "2",
+      "createdBy": "openclaw-vm-snapshot"
+    }
+  },
+  {
+    "name": "openclaw-auto-weekly-20260914T000000Z",
+    "provisioningState": "Succeeded",
+    "incremental": true,
+    "sourceResourceId": "/subscriptions/test/resourceGroups/other/providers/Microsoft.Compute/disks/os",
+    "tags": {
+      "purpose": "openclaw-automated-backup",
+      "retention": "2",
+      "createdBy": "openclaw-vm-snapshot"
+    }
+  }
+]

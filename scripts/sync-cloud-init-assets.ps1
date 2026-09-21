@@ -6,6 +6,12 @@ $sources = @(
     "config\openclaw-gateway.service",
     "config\openclaw-backup.service",
     "config\openclaw-backup.timer",
+    "config\openclaw-housekeeping.service",
+    "config\openclaw-housekeeping.timer",
+    "config\openclaw-vm-snapshot.service",
+    "config\openclaw-vm-snapshot.timer",
+    "config\drop-ins\openclaw-backup-10-housekeeping.conf",
+    "config\drop-ins\openclaw-backup-20-blob-retention.conf",
     "config\openclaw-health.service",
     "config\openclaw-health.timer",
     "config\openclaw-journald.conf",
@@ -13,6 +19,9 @@ $sources = @(
     "config\otelcol-openclaw.yaml",
     "scripts\install-openclaw-runtime.sh",
     "scripts\openclaw-backup.sh",
+    "scripts\openclaw-housekeeping.sh",
+    "scripts\openclaw-prune-blob-backups.sh",
+    "scripts\openclaw-create-vm-snapshot.sh",
     "scripts\openclaw-restore-verify.sh",
     "scripts\openclaw-health-check.sh",
     "scripts\openclaw-availability-check.py",
@@ -43,6 +52,10 @@ $values = @{
     "__KEY_VAULT_NAME__" = ("k" * 24)
     "__STORAGE_ACCOUNT_NAME__" = ("s" * 24)
     "__STORAGE_CONTAINER_NAME__" = "openclaw-backups"
+    "__RESOURCE_GROUP_NAME__" = "rg-openclaw-test"
+    "__DAILY_BACKUP_RETENTION__" = "7"
+    "__MONTHLY_BACKUP_RETENTION__" = "2"
+    "__WEEKLY_SNAPSHOT_RETENTION__" = "2"
     "__OPENCLAW_VERSION__" = $versions.openclaw.version
     "__OPENCLAW_INTEGRITY__" = $versions.openclaw.npmIntegrity
     "__DIAGNOSTICS_OTEL_VERSION__" = $versions.packages.'@openclaw/diagnostics-otel'.version

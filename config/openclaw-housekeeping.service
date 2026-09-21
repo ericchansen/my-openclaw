@@ -1,0 +1,19 @@
+[Unit]
+Description=Reclaim bounded OpenClaw build caches before backup
+After=docker.service
+Before=openclaw-backup.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/openclaw/runtime.env
+ExecStart=/usr/local/sbin/openclaw-housekeeping
+UMask=0077
+RuntimeDirectory=openclaw-housekeeping
+RuntimeDirectoryMode=0700
+NoNewPrivileges=true
+Nice=15
+CPUWeight=10
+IOWeight=10
+MemoryHigh=256M
+MemoryMax=512M
+TimeoutStartSec=20m

@@ -37,6 +37,18 @@ param ubuntuImageVersion string = '24.04.202607140'
 @description('Private backup blob container name')
 param backupContainerName string = 'openclaw-backups'
 
+@description('Retention policy for verified application backups')
+@minValue(1)
+param dailyBackupRetention int = 7
+
+@description('Retention policy for verified monthly application backups')
+@minValue(1)
+param monthlyBackupRetention int = 2
+
+@description('Retention policy for automated weekly OS-disk snapshots')
+@minValue(1)
+param weeklySnapshotRetention int = 2
+
 @description('Email addresses for independent runtime alerts; empty disables email actions')
 param monitoringContactEmails array = []
 
@@ -84,25 +96,29 @@ var cloudInit24 = replace(cloudInitBundle, '__ADMIN_USERNAME__', adminUsername)
 var cloudInit25 = replace(cloudInit24, '__KEY_VAULT_NAME__', keyVaultName)
 var cloudInit26 = replace(cloudInit25, '__STORAGE_ACCOUNT_NAME__', storageAccountName)
 var cloudInit27 = replace(cloudInit26, '__STORAGE_CONTAINER_NAME__', backupContainerName)
-var cloudInit28 = replace(cloudInit27, '__OPENCLAW_VERSION__', openclawVersion)
-var cloudInit29 = replace(cloudInit28, '__OPENCLAW_INTEGRITY__', openclawIntegrity)
-var cloudInit30 = replace(cloudInit29, '__NODE_VERSION__', nodeVersion)
-var cloudInit31 = replace(cloudInit30, '__NODE_SHA256__', nodeArm64Sha256)
-var cloudInit32 = replace(cloudInit31, '__OTEL_VERSION__', otelVersion)
-var cloudInit33 = replace(cloudInit32, '__OTEL_URL__', otelArm64Url)
-var cloudInit34 = replace(cloudInit33, '__OTEL_SHA256__', otelArm64Sha256)
-var cloudInit35 = replace(cloudInit34, '__COPILOT_VERSION__', copilotVersion)
-var cloudInit36 = replace(cloudInit35, '__COPILOT_INTEGRITY__', copilotIntegrity)
-var cloudInit37 = replace(cloudInit36, '__MCP_EBIRD_VERSION__', mcpEbirdVersion)
-var cloudInit38 = replace(cloudInit37, '__MCP_EBIRD_INTEGRITY__', mcpEbirdIntegrity)
-var cloudInit39 = replace(cloudInit38, '__MCP_PONDLOG_VERSION__', mcpPondlogVersion)
-var cloudInit40 = replace(cloudInit39, '__MCP_PONDLOG_INTEGRITY__', mcpPondlogIntegrity)
-var cloudInit41 = replace(cloudInit40, '__SANDBOX_SOURCE_COMMIT__', sandboxSourceCommit)
-var cloudInit42 = replace(cloudInit41, '__SANDBOX_ARCHIVE_URL__', sandboxArchiveUrl)
-var cloudInit43 = replace(cloudInit42, '__SANDBOX_ARCHIVE_SHA256__', sandboxArchiveSha256)
-var cloudInit44 = replace(cloudInit43, '__SANDBOX_BROWSER_CONTRACT__', sandboxBrowserContract)
-var cloudInit45 = replace(cloudInit44, '__DIAGNOSTICS_OTEL_VERSION__', diagnosticsOtelVersion)
-var renderedCloudInit = replace(cloudInit45, '__DIAGNOSTICS_OTEL_INTEGRITY__', diagnosticsOtelIntegrity)
+var cloudInit28 = replace(cloudInit27, '__RESOURCE_GROUP_NAME__', resourceGroup().name)
+var cloudInit29 = replace(cloudInit28, '__DAILY_BACKUP_RETENTION__', string(dailyBackupRetention))
+var cloudInit30 = replace(cloudInit29, '__MONTHLY_BACKUP_RETENTION__', string(monthlyBackupRetention))
+var cloudInit31 = replace(cloudInit30, '__WEEKLY_SNAPSHOT_RETENTION__', string(weeklySnapshotRetention))
+var cloudInit32 = replace(cloudInit31, '__OPENCLAW_VERSION__', openclawVersion)
+var cloudInit33 = replace(cloudInit32, '__OPENCLAW_INTEGRITY__', openclawIntegrity)
+var cloudInit34 = replace(cloudInit33, '__NODE_VERSION__', nodeVersion)
+var cloudInit35 = replace(cloudInit34, '__NODE_SHA256__', nodeArm64Sha256)
+var cloudInit36 = replace(cloudInit35, '__OTEL_VERSION__', otelVersion)
+var cloudInit37 = replace(cloudInit36, '__OTEL_URL__', otelArm64Url)
+var cloudInit38 = replace(cloudInit37, '__OTEL_SHA256__', otelArm64Sha256)
+var cloudInit39 = replace(cloudInit38, '__COPILOT_VERSION__', copilotVersion)
+var cloudInit40 = replace(cloudInit39, '__COPILOT_INTEGRITY__', copilotIntegrity)
+var cloudInit41 = replace(cloudInit40, '__MCP_EBIRD_VERSION__', mcpEbirdVersion)
+var cloudInit42 = replace(cloudInit41, '__MCP_EBIRD_INTEGRITY__', mcpEbirdIntegrity)
+var cloudInit43 = replace(cloudInit42, '__MCP_PONDLOG_VERSION__', mcpPondlogVersion)
+var cloudInit44 = replace(cloudInit43, '__MCP_PONDLOG_INTEGRITY__', mcpPondlogIntegrity)
+var cloudInit45 = replace(cloudInit44, '__SANDBOX_SOURCE_COMMIT__', sandboxSourceCommit)
+var cloudInit46 = replace(cloudInit45, '__SANDBOX_ARCHIVE_URL__', sandboxArchiveUrl)
+var cloudInit47 = replace(cloudInit46, '__SANDBOX_ARCHIVE_SHA256__', sandboxArchiveSha256)
+var cloudInit48 = replace(cloudInit47, '__SANDBOX_BROWSER_CONTRACT__', sandboxBrowserContract)
+var cloudInit49 = replace(cloudInit48, '__DIAGNOSTICS_OTEL_VERSION__', diagnosticsOtelVersion)
+var renderedCloudInit = replace(cloudInit49, '__DIAGNOSTICS_OTEL_INTEGRITY__', diagnosticsOtelIntegrity)
 
 // Key Vault — RBAC authorization, soft delete + purge protection
 resource keyVault 'Microsoft.KeyVault/vaults@2024-11-01' = {
@@ -212,6 +228,21 @@ resource backupLifecycle 'Microsoft.Storage/storageAccounts/managementPolicies@2
         }
         {
           enabled: true
+          name: 'delete-openclaw-pruned-versions-after-7-days'
+          type: 'Lifecycle'
+          definition: {
+            actions: {
+              version: { delete: { daysAfterCreationGreaterThan: 7 } }
+              snapshot: { delete: { daysAfterCreationGreaterThan: 7 } }
+            }
+            filters: {
+              blobTypes: [ 'blockBlob' ]
+              prefixMatch: [ '${backupContainerName}/' ]
+            }
+          }
+        }
+        {
+          enabled: true
           name: 'delete-monthly-after-365-days'
           type: 'Lifecycle'
           definition: {
@@ -267,6 +298,25 @@ resource backupStorageRoleAssignment 'Microsoft.Authorization/roleAssignments@20
       'Microsoft.Authorization/roleDefinitions',
       'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
     )
+    principalId: vm.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// The VM identity needs only snapshot lifecycle operations and read access to discover its OS disk.
+resource snapshotRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(resourceGroup().id, vm.id, '5e467623-bb1f-42f4-a55d-6e525e11384b')
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '5e467623-bb1f-42f4-a55d-6e525e11384b')
+    principalId: vm.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource diskReaderRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(resourceGroup().id, vm.id, 'acdd72a7-3385-48ef-bd42-f606fba81ae7')
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'acdd72a7-3385-48ef-bd42-f606fba81ae7')
     principalId: vm.identity.principalId
     principalType: 'ServicePrincipal'
   }

@@ -68,12 +68,20 @@ class MaintenanceOrderingTests(unittest.TestCase):
         self.assertLess(
             unlock, UPDATER.index("systemctl start openclaw-backup.timer", ready)
         )
+        self.assertIn(
+            "openclaw-housekeeping.timer openclaw-vm-snapshot.timer",
+            UPDATER,
+        )
 
     def test_only_own_timers_are_paused_and_no_service_is_killed_for_drain(self):
         drain = UPDATER.split("# Stop only our timers.", 1)[1].split(
             '\nbash "$sandbox_provisioner"', 1
         )[0]
-        self.assertIn("openclaw-backup.timer openclaw-health.timer", drain)
+        self.assertIn(
+            "openclaw-backup.timer openclaw-health.timer "
+            "openclaw-housekeeping.timer openclaw-vm-snapshot.timer",
+            " ".join(drain.replace("\\\n", " ").split()),
+        )
         self.assertNotIn("systemctl stop \"$service\"", drain)
         self.assertNotIn("docker", drain)
         self.assertNotIn("kill", drain)
@@ -264,9 +272,13 @@ echo callback-under-exclusive-lock
         assets.mkdir()
         names = re.search(r"required_assets=\((.*?)\n\)", INSTALLER, re.DOTALL)[1].split()
         for name in names:
-            source = SCRIPTS / name
-            if not source.exists():
-                source = ROOT / "config" / name
+            candidates = (
+                SCRIPTS / name,
+                ROOT / "config" / name,
+                ROOT / "config" / "drop-ins" / name,
+            )
+            source = next((candidate for candidate in candidates if candidate.exists()), None)
+            self.assertIsNotNone(source, f"missing required runtime asset: {name}")
             shutil.copyfile(source, assets / name)
         updater = assets / "openclaw-update.sh"
         updater.write_text(
@@ -299,6 +311,7 @@ node() { echo v22.22.0; }
             "user": "runtime",
             "key-vault": "test-vault",
             "storage-account": "testaccount",
+            "resource-group": "test-resource-group",
             "openclaw-version": "2026.9.1",
             "diagnostics-otel-version": "2026.9.1",
             "node-version": "22.22.0",

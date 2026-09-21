@@ -144,6 +144,13 @@ print("root staging verified")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("root staging verified", result.stdout)
 
+    def test_existing_host_apply_passes_resource_group_to_installer(self):
+        apply = (Path(MODULE.__file__).parent / "apply-runtime.ps1").read_text()
+        self.assertIn(
+            '"--resource-group", $ResourceGroupName,',
+            apply,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

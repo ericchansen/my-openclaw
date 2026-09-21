@@ -359,7 +359,8 @@ trap leave_stopped_on_failure EXIT
 
 # Stop only our timers. Existing lockless service executions (from an older
 # installation) must finish naturally before any runtime file is replaced.
-for timer in openclaw-backup.timer openclaw-health.timer; do
+for timer in openclaw-backup.timer openclaw-health.timer \
+  openclaw-housekeeping.timer openclaw-vm-snapshot.timer; do
   if systemctl is-active --quiet "$timer"; then
     paused_timers+=("$timer")
     systemctl stop "$timer"
@@ -581,7 +582,8 @@ flock --unlock 8
 exec 8<&-
 unset OPENCLAW_MAINTENANCE_LOCK_HELD
 if [[ -n "$runtime_installer" ]]; then
-  systemctl start openclaw-backup.timer openclaw-health.timer
+  systemctl start openclaw-backup.timer openclaw-health.timer \
+    openclaw-housekeeping.timer openclaw-vm-snapshot.timer
   paused_timers=()
 else
   restore_timers

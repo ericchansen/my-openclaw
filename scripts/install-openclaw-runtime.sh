@@ -10,6 +10,10 @@ openclaw_user=azureuser
 key_vault_name=
 storage_account=
 storage_container=openclaw-backups
+resource_group=
+daily_backup_retention=7
+monthly_backup_retention=2
+weekly_snapshot_retention=2
 openclaw_version=
 openclaw_integrity=
 diagnostics_otel_version=
@@ -42,6 +46,10 @@ while [[ $# -gt 0 ]]; do
     --key-vault) key_vault_name="$2"; shift 2 ;;
     --storage-account) storage_account="$2"; shift 2 ;;
     --storage-container) storage_container="$2"; shift 2 ;;
+    --resource-group) resource_group="$2"; shift 2 ;;
+    --daily-backup-retention) daily_backup_retention="$2"; shift 2 ;;
+    --monthly-backup-retention) monthly_backup_retention="$2"; shift 2 ;;
+    --weekly-snapshot-retention) weekly_snapshot_retention="$2"; shift 2 ;;
     --openclaw-version) openclaw_version="$2"; shift 2 ;;
     --openclaw-integrity) openclaw_integrity="$2"; shift 2 ;;
     --diagnostics-otel-version) diagnostics_otel_version="$2"; shift 2 ;;
@@ -74,6 +82,10 @@ done
 [[ "$key_vault_name" != *--* ]] || exit 64
 [[ "$storage_account" =~ ^[a-z0-9]{3,24}$ ]] || exit 64
 [[ "$storage_container" =~ ^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$ ]] || exit 64
+[[ "$resource_group" =~ ^[A-Za-z0-9._()-]{1,90}$ && "$resource_group" != *. ]] || exit 64
+[[ "$daily_backup_retention" =~ ^[1-9][0-9]*$ ]] || exit 64
+[[ "$monthly_backup_retention" =~ ^[1-9][0-9]*$ ]] || exit 64
+[[ "$weekly_snapshot_retention" =~ ^[1-9][0-9]*$ ]] || exit 64
 [[ "$openclaw_version" =~ ^[0-9]{4}\.[0-9]+\.[0-9]+$ ]] || exit 64
 [[ "$diagnostics_otel_version" =~ ^[0-9]{4}\.[0-9]+\.[0-9]+$ ]] || exit 64
 [[ "$node_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 64
@@ -172,12 +184,21 @@ required_assets=(
   openclaw-gateway.service
   openclaw-backup.service
   openclaw-backup.timer
+  openclaw-housekeeping.service
+  openclaw-housekeeping.timer
+  openclaw-vm-snapshot.service
+  openclaw-vm-snapshot.timer
+  openclaw-backup-10-housekeeping.conf
+  openclaw-backup-20-blob-retention.conf
   openclaw-health.service
   openclaw-health.timer
   openclaw-journald.conf
   openclaw-otel-collector.service
   otelcol-openclaw.yaml
   openclaw-backup.sh
+  openclaw-housekeeping.sh
+  openclaw-prune-blob-backups.sh
+  openclaw-create-vm-snapshot.sh
   openclaw-restore-verify.sh
   openclaw-health-check.sh
   openclaw-availability-check.py
@@ -458,8 +479,15 @@ IFS=: read -r otel_account _ otel_uid otel_gid _ otel_home otel_shell \
 install -d -o root -g root -m 0755 /etc/openclaw /usr/local/bin /usr/local/sbin
 cat > /etc/openclaw/runtime.env <<EOF
 OPENCLAW_KEY_VAULT=${key_vault_name}
+OPENCLAW_RUNTIME_USER=${openclaw_user}
+OPENCLAW_RUNTIME_HOME=${openclaw_home}
 OPENCLAW_BACKUP_ACCOUNT=${storage_account}
 OPENCLAW_BACKUP_CONTAINER=${storage_container}
+OPENCLAW_BACKUP_KEEP_DAILY=${daily_backup_retention}
+OPENCLAW_BACKUP_KEEP_MONTHLY=${monthly_backup_retention}
+OPENCLAW_SNAPSHOT_RETENTION=${weekly_snapshot_retention}
+OPENCLAW_AZURE_RESOURCE_GROUP=${OPENCLAW_AZURE_RESOURCE_GROUP:-$resource_group}
+OPENCLAW_AZURE_VM_NAME=${OPENCLAW_AZURE_VM_NAME:-openclaw-vm}
 OPENCLAW_HEALTH_URL=http://127.0.0.1:18789/health
 OPENCLAW_BACKUP_STATUS=/var/lib/openclaw-runtime/backup-status.json
 OPENCLAW_BACKUP_MAX_AGE_SECONDS=129600
@@ -474,6 +502,9 @@ chown root:root /etc/openclaw/keyvault-allowlist
 chmod 0644 /etc/openclaw/keyvault-allowlist
 
 install -m 0755 "$asset_dir/openclaw-backup.sh" /usr/local/sbin/openclaw-backup
+install -m 0755 "$asset_dir/openclaw-housekeeping.sh" /usr/local/sbin/openclaw-housekeeping
+install -m 0755 "$asset_dir/openclaw-prune-blob-backups.sh" /usr/local/sbin/openclaw-prune-blob-backups
+install -m 0755 "$asset_dir/openclaw-create-vm-snapshot.sh" /usr/local/sbin/openclaw-create-vm-snapshot
 install -m 0755 "$asset_dir/openclaw-restore-verify.sh" /usr/local/sbin/openclaw-restore-verify
 install -m 0755 "$asset_dir/openclaw-health-check.sh" /usr/local/sbin/openclaw-health-check
 install -o root -g root -m 0555 \
@@ -540,7 +571,7 @@ if [[ -n "$gog_executable" ]]; then
   ln -sfn -- /usr/local/bin/openclaw-gog-launch /usr/local/bin/gog
   chown -h root:root /usr/local/bin/gog
 fi
-for unit in openclaw-gateway.service openclaw-backup.service openclaw-health.service; do
+for unit in openclaw-gateway.service openclaw-backup.service openclaw-health.service openclaw-housekeeping.service openclaw-vm-snapshot.service; do
   sed "s/__OPENCLAW_USER__/${openclaw_user}/g" "$asset_dir/$unit" \
     > "/etc/systemd/system/$unit"
 done
@@ -551,6 +582,11 @@ install -o root -g root -m 0644 \
   "$asset_dir/openclaw-otel-collector.service" \
   /etc/systemd/system/openclaw-otel-collector.service
 install -m 0644 "$asset_dir/openclaw-backup.timer" /etc/systemd/system/openclaw-backup.timer
+install -m 0644 "$asset_dir/openclaw-housekeeping.timer" /etc/systemd/system/openclaw-housekeeping.timer
+install -m 0644 "$asset_dir/openclaw-vm-snapshot.timer" /etc/systemd/system/openclaw-vm-snapshot.timer
+install -d -m 0755 /etc/systemd/system/openclaw-backup.service.d
+install -m 0644 "$asset_dir/openclaw-backup-10-housekeeping.conf" /etc/systemd/system/openclaw-backup.service.d/10-housekeeping.conf
+install -m 0644 "$asset_dir/openclaw-backup-20-blob-retention.conf" /etc/systemd/system/openclaw-backup.service.d/20-blob-retention.conf
 install -m 0644 "$asset_dir/openclaw-health.timer" /etc/systemd/system/openclaw-health.timer
 journald_changed=false
 install -d -o root -g root -m 0755 /etc/systemd/journald.conf.d
@@ -664,10 +700,12 @@ else
     'The gateway was not active, so it was neither enabled nor started. Complete onboarding before enabling it.'
 fi
 systemctl enable openclaw-backup.timer openclaw-health.timer
+systemctl enable openclaw-housekeeping.timer openclaw-vm-snapshot.timer
 if [[ "$install_stopped_runtime" != true ]]; then
   flock --unlock 8
   exec 8<&-
   unset OPENCLAW_MAINTENANCE_LOCK_HELD
   systemctl restart openclaw-backup.timer openclaw-health.timer
+  systemctl restart openclaw-housekeeping.timer openclaw-vm-snapshot.timer
 fi
 printf 'OpenClaw runtime %s installed for %s.\n' "$openclaw_version" "$openclaw_user"
