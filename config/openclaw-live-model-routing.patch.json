@@ -20,10 +20,24 @@
           "params": {
             "thinking": "xhigh"
           }
+        },
+        "github-copilot/gpt-6-astra": {
+          "alias": "astra",
+          "agentRuntime": {
+            "id": "copilot"
+          }
         }
       }
     },
     "entries": {
+      "orchestrator": {
+        "model": {
+          "primary": "github-copilot/gpt-6-astra",
+          "fallbacks": [
+            "github-copilot/gpt-5.6-sol-fast"
+          ]
+        }
+      },
       "fitness": {
         "model": {
           "primary": "github-copilot/gpt-5.6-sol-fast",

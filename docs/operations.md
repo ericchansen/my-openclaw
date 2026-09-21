@@ -60,7 +60,7 @@ Do not replace live channels with a template. Review identities, owner command
 grants, agent routing, plugin allowlist additions, and model overrides separately.
 Preserve existing approved family configuration; future identity/sharing changes
 need explicit review, not an implicit grant from this upgrade.
-For the current production model use the prerequisite-gated [Astra overlay](astra-model.md).
+The interactive default is GPT-5.6 Sol Fast extra-high with Claude Opus 5 extra-high fallback. Astra is available; agents choose. See the [Astra overlay](astra-model.md).
 
 ### Trusted operator blocked by a model-facing tool
 
@@ -74,9 +74,8 @@ agent tool rather than direct SSH. Old closed approval requests are not resumed
 or approved by changing the policy.
 
 First verify the active agent's full host exec policy and the requesting sender's
-reviewed operator grant. In the opt-in production profile, use the
-[trusted-operator administration skill](../workspace/skills/trusted-operator-admin/SKILL.md)
-and the existing authenticated host CLI for cross-conversation jobs. A native
+reviewed operator grant. In the opt-in production profile, use the existing authenticated host CLI for
+cross-conversation jobs. A native
 `automations` ownership denial or the Copilot delegated-expert transcript-target
 error does not establish that this independent administration path is unavailable.
 The [security model](security-model.md#administration-from-trusted-conversations)
@@ -116,9 +115,14 @@ artifacts private and never prune the restricted healthcheck as legacy.
 Existing-host [infrastructure deployment](../deploy.ps1) is snapshot-guarded and
 refreshes monitoring only; it does not update OpenClaw or mutate live networking.
 Inspect `openclaw update status --json` and `openclaw update --dry-run --json`.
-Use [apply-runtime.ps1](../scripts/apply-runtime.ps1) for active custom-systemd
-hosts; it invokes [openclaw-update](../scripts/openclaw-update.sh) with recovery
-evidence. Never substitute a bare global npm update, mutable tag, or onboarding.
+Managed `openclaw update` / `gateway update.run` handoff requires a **user-scope**
+systemd unit and is incompatible with this system's
+`/etc/systemd/system/openclaw-gateway.service`. Agents on the host must not
+refuse authorized updates for that reason, migrate to a user unit, or wait for
+a `gateway` tool. Use [apply-runtime.ps1](../scripts/apply-runtime.ps1) for active
+custom-systemd hosts; it invokes [openclaw-update](../scripts/openclaw-update.sh)
+with recovery evidence. Never substitute a bare global npm update, mutable tag,
+or onboarding.
 Runtime apply streams the freshness-checked bundle directly to a root process,
 verifies its SHA-256, and stages regular files beneath root-owned, non-writable
 ancestors. The private staging directory is retained for delayed installer

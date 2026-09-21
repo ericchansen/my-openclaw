@@ -282,23 +282,23 @@ class CopilotHarnessPolicyTests(unittest.TestCase):
             (ROOT / "docs/telemetry-privacy.md").read_text(),
         )
 
-    def test_astra_overlay_is_model_scoped_and_preserves_working_fallback(self):
+    def test_astra_overlay_is_orchestrator_only(self):
         patch = json.loads((ROOT / "config/openclaw-astra.patch.json").read_text())
         defaults = patch["agents"]["defaults"]
-        self.assertEqual(defaults["model"]["primary"], "github-copilot/gpt-6-astra")
-        self.assertEqual(defaults["model"]["fallbacks"], ["github-copilot/claude-sonnet-5"])
+        self.assertNotIn("model", defaults)
         self.assertEqual(defaults["models"], {
             "github-copilot/gpt-6-astra": {"alias": "astra", "agentRuntime": {"id": "copilot"}}})
+        self.assertEqual(patch["agents"]["entries"]["orchestrator"]["model"]["primary"],
+                         "github-copilot/gpt-6-astra")
+        self.assertEqual(patch["agents"]["entries"]["orchestrator"]["model"]["fallbacks"],
+                         ["github-copilot/gpt-5.6-sol-fast"])
         self.assertNotIn("allow", patch["plugins"])
         for unrelated in ("channels", "tools", "commands", "session", "secrets", "cron", "hooks"):
             self.assertNotIn(unrelated, patch)
 
-    def test_astra_canary_retains_native_exit_status_receipts(self):
+    def test_astra_overlay_does_not_override_healthcheck(self):
         patch = json.loads((ROOT / "config/openclaw-astra.patch.json").read_text())
-        self.assertEqual(patch["agents"]["entries"]["healthcheck"], {"model": {
-            "primary": "github-copilot/gpt-5.6-luna",
-            "fallbacks": ["github-copilot/claude-sonnet-5"],
-        }})
+        self.assertNotIn("healthcheck", patch["agents"]["entries"])
         for model in ("github-copilot/gpt-5.6-luna", "github-copilot/claude-sonnet-5"):
             self.assertNotIn(model, patch["agents"]["defaults"]["models"])
 

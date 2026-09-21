@@ -120,11 +120,8 @@ and filesystem access are not substitutes for that grant.
 
 The trusted-operator profile already permits a separate supported route: use
 ordinary host `exec` to run the installed, authenticated `openclaw automations`
-CLI. Install the [trusted-operator administration skill](../workspace/skills/trusted-operator-admin/SKILL.md)
-only in the reviewed active workspaces and reference it in their existing
-instructions. Do not copy it over specialist instructions or apply it as a
-permission grant to the isolated baseline. Agents sharing a workspace share its
-skill; retain separate copies for specialists with distinct workspaces.
+CLI. Do not treat a narrower model-facing tool as the limit of approved host
+access.
 
 This route keeps real job ownership and scheduled execution policy intact.
 Never forge a Control UI identity, remove caller metadata, inject an operator
@@ -135,7 +132,14 @@ The pinned Copilot harness also rejects the delegated `openclaw` expert's
 in-memory turn with `canonical transcript persistence requires an exact runtime
 session target`. Interactive Astra conversations and ordinary host CLI execution
 are separate paths. Use the supported CLI for authorized administration without
-claiming the delegated expert is repaired or changing the default model/runtime.
+claiming the delegated expert is repaired.
+
+System-scope Gateway units cannot use OpenClaw managed `update.run` handoff.
+Authorized runtime updates use `sudo /usr/local/sbin/openclaw-update` after
+backup and snapshot evidence. Do not migrate to a user-scope unit or treat a
+missing `gateway` tool as a host-access denial. The interactive default is
+GPT-5.6 Sol Fast extra-high with Claude Opus 5 extra-high fallback. Astra remains
+available. Copilot-harness private prompts are not operator policy.
 
 ## Host, Azure, and telemetry risks
 

@@ -7,11 +7,11 @@ with matching diagnostics plugin and Node 22.23.1, pinned in
 [runtime-versions.json](../config/runtime-versions.json). Experimental core patches,
 custom browser-egress integration, and the proposed reminder plugin were not promoted.
 
-The current [Astra profile](astra-model.md) uses the official Copilot harness;
-exec/history and Telegram workflows worked, with native Sonnet 5 fallback retained.
-The [Sonnet recovery overlay](../config/openclaw-model-reliability.patch.json)
-remains a baseline without that plugin. Built-in provider trials produced invalid
-history arguments; a working harness/fallback does not prove every provider path fixed.
+The interactive default is GPT-5.6 Sol Fast extra-high with Claude Opus 5 extra-high
+fallback via [openclaw-model-reliability.patch.json](../config/openclaw-model-reliability.patch.json).
+Astra is available through the official Copilot harness; see [astra-model.md](astra-model.md).
+Built-in provider trials produced invalid history arguments; a working harness or
+fallback does not prove every provider path fixed.
 Remove retired `messages.suppressToolErrors` and `gateway.controlUi.toolTitles`
 through `openclaw config unset` if present, then validate with the published CLI.
 
@@ -37,9 +37,9 @@ token in both a successful tool receipt and final response, not an HTTP success
 or echoed prompt. No user conversation is loaded and no chat message is sent.
 The probe requests thinking `off`, avoiding a model-specific reasoning level
 that the selected model's catalog may reject before any tool runs.
-With the optional Astra overlay, the diagnostic agent is pinned to native Luna
-with Sonnet fallback so its exec receipts retain the exit-status proof that the
-interactive Copilot harness currently omits.
+The template `healthcheck` entry has no model, so it inherits the native default.
+A Copilot-harness model is a poor canary: those exec receipts currently omit the
+exit-status proof. Live may pin a native utility model for that probe.
 
 Successful evidence is cached for up to one hour; missing, stale, malformed, or
 failed evidence is actionable through the [health helper](../scripts/openclaw-health-check.sh).

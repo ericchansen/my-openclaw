@@ -6,9 +6,11 @@ Discord, Key Vault SecretRefs, verified Blob backups, and Azure Monitor.
 The runtime is the unmodified official OpenClaw **2026.9.2** on Node **22.23.1**.
 [Runtime versions and integrity pins](config/runtime-versions.json) are authoritative;
 do not substitute an experimental distribution or a mutable package tag.
-Production uses [GPT-6 Astra through the official Copilot harness](docs/astra-model.md),
-with native Sonnet 5 fallback. The default template remains a valid Sonnet baseline
-until the official plugin and CLI-path prerequisites are installed.
+The interactive default is [GPT-5.6 Sol Fast](config/openclaw-model-reliability.patch.json)
+extra-high with Claude Opus 5 extra-high fallback. GPT-6 Astra is available; it is
+not the default main agent because the Copilot harness hid instruction provenance
+and blocked authorized maintenance. Agents choose. See the
+[Astra overlay](docs/astra-model.md).
 
 ## Operating boundaries
 
@@ -96,7 +98,7 @@ Use `-UseTailscaleSsh` only after tailnet enrollment and SSH authorization are v
 - [Availability acceptance and known limitations](docs/availability-recovery.md)
 - [Backup, staged restore, and rollback](docs/backup-restore.md)
 - [Security and trusted-family boundaries](docs/security-model.md)
-- [Astra production overlay](docs/astra-model.md)
+- [Astra overlay](docs/astra-model.md)
 - [Key Vault integration](docs/keyvault-integration.md) and [telemetry privacy](docs/telemetry-privacy.md)
 
 The [workspace templates](workspace/) are for new workspaces only. Never overwrite
