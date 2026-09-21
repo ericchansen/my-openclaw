@@ -171,10 +171,12 @@ installation. Unknown protocols and malformed provenance still fail closed.
 OpenClaw itself retains package compatibility, integrity, capability-consent, and
 dependency-boundary checks; allowing a policy request does not bypass those checks.
 
-The npm allowlist is only `@openclaw/copilot` (`copilot`) and
-`@openclaw/diagnostics-otel` (`diagnostics-otel`), not the whole `@openclaw` scope.
-They require immutable, network-backed npm provenance. The upstream `third-party`
-authority label is accepted for these exact registry identities because direct
+The npm allowlist is only `@openclaw/brave-plugin` (`brave`),
+`@openclaw/copilot` (`copilot`), `@openclaw/diagnostics-otel`
+(`diagnostics-otel`), and `@openclaw/discord` (`discord`), not the whole
+`@openclaw` scope. They require immutable, network-backed npm provenance. The
+upstream `third-party` authority label is accepted for these exact registry
+identities because direct
 npm installs use it; unknown/user provenance, local copies, git/URL/alias sources,
 version ranges, and non-stable tags/releases do not gain unattended approval.
 Exact stable versions, including OpenClaw's numeric calendar correction releases

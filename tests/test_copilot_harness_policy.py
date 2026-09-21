@@ -8,13 +8,19 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 HELPER = ROOT / "scripts" / "openclaw-install-policy.py"
+OFFICIAL_PLUGIN_PACKAGES = {
+    "brave": "@openclaw/brave-plugin",
+    "copilot": "@openclaw/copilot",
+    "diagnostics-otel": "@openclaw/diagnostics-otel",
+    "discord": "@openclaw/discord",
+}
 
 
 class CopilotHarnessPolicyTests(unittest.TestCase):
     def fixture(self, plugin_id="copilot", phase="preflight"):
         name = f"install-policy-allow-diagnostics-{phase}.json"
         data = json.loads((ROOT / "tests" / "fixtures" / name).read_text())
-        package = f"@openclaw/{plugin_id}"
+        package = OFFICIAL_PLUGIN_PACKAGES[plugin_id]
         data["targetName"] = plugin_id
         data["request"]["requestedSpecifier"] = f"npm:{package}@2026.9.2"
         for metadata in (data["origin"], data["plugin"]):
@@ -44,7 +50,7 @@ class CopilotHarnessPolicyTests(unittest.TestCase):
                 self.assertEqual(self.decision(json.loads(path.read_text())), expected)
 
     def test_exact_official_package_is_allowed(self):
-        for plugin_id in ("copilot", "diagnostics-otel"):
+        for plugin_id in OFFICIAL_PLUGIN_PACKAGES:
             for phase in ("preflight", "staged", "stable-dependencies"):
                 with self.subTest(plugin_id=plugin_id, phase=phase):
                     self.assertEqual(self.decision(self.fixture(plugin_id, phase)), "allow")
@@ -63,23 +69,23 @@ class CopilotHarnessPolicyTests(unittest.TestCase):
                     self.assertEqual(self.decision(data), expected)
 
     def test_official_stable_versions_are_not_tied_to_the_baseline(self):
-        for plugin_id in ("copilot", "diagnostics-otel"):
+        for plugin_id, package in OFFICIAL_PLUGIN_PACKAGES.items():
             for version in ("2026.9.1", "2026.9.4", "2030.1.1", "2030.1.1-2"):
                 for phase in ("preflight", "staged"):
                     with self.subTest(plugin_id=plugin_id, version=version, phase=phase):
                         data = self.fixture(plugin_id, phase)
-                        data["request"]["requestedSpecifier"] = f"@openclaw/{plugin_id}@{version}"
+                        data["request"]["requestedSpecifier"] = f"{package}@{version}"
                         if phase == "staged":
                             data["plugin"]["version"] = data["origin"]["version"] = version
                         self.assertEqual(self.decision(data), "allow")
 
     def test_stable_selectors_follow_the_complete_policy_lifecycle(self):
-        for plugin_id in ("copilot", "diagnostics-otel"):
+        for plugin_id, package in OFFICIAL_PLUGIN_PACKAGES.items():
             for selector in ("", "@latest", "@stable"):
                 for phase in ("preflight", "staged", "stable-dependencies"):
                     with self.subTest(plugin_id=plugin_id, selector=selector, phase=phase):
                         data = self.fixture(plugin_id, phase)
-                        data["request"].update(mode="update", requestedSpecifier=f"@openclaw/{plugin_id}{selector}")
+                        data["request"].update(mode="update", requestedSpecifier=f"{package}{selector}")
                         self.assertEqual(self.decision(data), "allow")
 
     def test_official_registry_provenance_and_preflight_aliases(self):
@@ -224,7 +230,9 @@ class CopilotHarnessPolicyTests(unittest.TestCase):
 
     def test_allowlist_does_not_expand_to_scope_siblings_or_third_parties(self):
         for package in (
-            "@openclaw/other", "@openclaw/copilot-extra", "@github/copilot", "@untrusted/copilot",
+            "@openclaw/other", "@openclaw/brave", "@openclaw/brave-plugin-extra",
+            "@openclaw/copilot-extra", "@openclaw/discord-extra", "@github/copilot",
+            "@untrusted/copilot",
         ):
             for authority, expected in (("third-party", "warn"), ("official", "block")):
                 with self.subTest(package=package, authority=authority):
