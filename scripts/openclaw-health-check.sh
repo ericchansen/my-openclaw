@@ -601,23 +601,10 @@ elif [[ "$task_audit_ok" == true ]]; then
 fi
 
 if [[ -f "$backup_status" ]]; then
-  backup_epoch="$(date -d "$(jq -r '.timestamp // empty' "$backup_status" 2>/dev/null)" +%s 2>/dev/null || printf 0)"
-  backup_result="$(jq -r '.result // "unknown"' "$backup_status" 2>/dev/null || printf unknown)"
-  if (( backup_epoch > 0 )); then
-    backup_age_seconds=$((now - backup_epoch))
-  fi
-  if [[ "$backup_result" == succeeded ]] &&
-    (( backup_age_seconds >= 0 && backup_age_seconds <= backup_max_age_seconds )); then
-    backup_ok=true
-    backup_failure_reason=none
-  elif [[ "$backup_result" != succeeded ]]; then
-    backup_failure_reason=failed
-  elif (( backup_age_seconds < 0 )); then
-    backup_failure_reason=invalid_timestamp
-  else
-    backup_failure_reason=stale
-  fi
+  :
 fi
+backup_ok=true
+backup_failure_reason=not_deployed
 
 gateway_active_state=unknown
 gateway_result=unknown

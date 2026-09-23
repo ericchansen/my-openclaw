@@ -22,10 +22,18 @@ class ServiceBudgetTests(unittest.TestCase):
         self.assertEqual(unit["TasksMax"], "1024")
         self.assertEqual(unit["RestartPreventExitStatus"], "78")
 
+    def test_snapshot_timer_is_daily_utc_with_fixed_jitter(self):
+        parser = configparser.ConfigParser(interpolation=None, strict=False)
+        parser.read(ROOT / "config" / "openclaw-vm-snapshot.timer")
+        self.assertEqual(parser["Timer"]["OnCalendar"], "*-*-* 05:30:00 UTC")
+        self.assertEqual(parser["Timer"]["RandomizedDelaySec"], "15m")
+        self.assertEqual(parser["Timer"]["FixedRandomDelay"], "true")
+        self.assertEqual(parser["Timer"]["Unit"], "openclaw-vm-snapshot.service")
+
     def test_background_services_have_explicit_smaller_budgets(self):
         for name, maximum in (
             ("openclaw-health.service", "2G"),
-            ("openclaw-backup.service", "2G"),
+            ("openclaw-vm-snapshot.service", "512M"),
             ("openclaw-otel-collector.service", "512M"),
         ):
             with self.subTest(unit=name):

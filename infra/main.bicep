@@ -34,9 +34,6 @@ param deployerPrincipalType string = 'User'
 @description('Canonical Ubuntu 24.04 ARM64 image version for new VMs.')
 param ubuntuImageVersion string = '24.04.202607140'
 
-@description('Private backup blob container name')
-param backupContainerName string = 'openclaw-backups'
-
 @description('Email addresses for independent runtime alerts; empty disables email actions')
 param monitoringContactEmails array = []
 
@@ -52,7 +49,6 @@ var nsgName = 'openclaw-nsg'
 var publicIpName = 'openclaw-pip'
 var nicName = 'openclaw-nic'
 var keyVaultName = 'kv-oc-${uniqueString(resourceGroup().id)}'
-var storageAccountName = 'stoc${uniqueString(resourceGroup().id)}'
 var vmSubnetId = resourceId('Microsoft.Network/virtualNetworks/subnets', vnetName, subnetName)
 var runtimeVersions = loadJsonContent('../config/runtime-versions.json')
 var openclawVersion = runtimeVersions.openclaw.version
@@ -82,8 +78,8 @@ var cloudInitBundle = replace(
 )
 var cloudInit24 = replace(cloudInitBundle, '__ADMIN_USERNAME__', adminUsername)
 var cloudInit25 = replace(cloudInit24, '__KEY_VAULT_NAME__', keyVaultName)
-var cloudInit26 = replace(cloudInit25, '__STORAGE_ACCOUNT_NAME__', storageAccountName)
-var cloudInit27 = replace(cloudInit26, '__STORAGE_CONTAINER_NAME__', backupContainerName)
+var cloudInit26 = replace(cloudInit25, '__RESOURCE_GROUP_NAME__', resourceGroup().name)
+var cloudInit27 = replace(cloudInit26, '__VM_NAME__', vmName)
 var cloudInit28 = replace(cloudInit27, '__OPENCLAW_VERSION__', openclawVersion)
 var cloudInit29 = replace(cloudInit28, '__OPENCLAW_INTEGRITY__', openclawIntegrity)
 var cloudInit30 = replace(cloudInit29, '__NODE_VERSION__', nodeVersion)
@@ -124,151 +120,6 @@ resource keyVault 'Microsoft.KeyVault/vaults@2024-11-01' = {
     enabledForTemplateDeployment: false
     softDeleteRetentionInDays: 7
     publicNetworkAccess: 'Enabled'
-  }
-}
-
-resource backupStorage 'Microsoft.Storage/storageAccounts@2023-05-01' = {
-  name: storageAccountName
-  location: location
-  sku: {
-    name: 'Standard_LRS'
-  }
-  kind: 'StorageV2'
-  properties: {
-    allowBlobPublicAccess: false
-    allowSharedKeyAccess: false
-    allowCrossTenantReplication: false
-    defaultToOAuthAuthentication: true
-    minimumTlsVersion: 'TLS1_2'
-    supportsHttpsTrafficOnly: true
-    publicNetworkAccess: 'Enabled'
-  }
-}
-
-resource backupBlobService 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01' = {
-  parent: backupStorage
-  name: 'default'
-  properties: {
-    isVersioningEnabled: true
-    changeFeed: {
-      enabled: true
-      retentionInDays: 7
-    }
-    deleteRetentionPolicy: {
-      enabled: true
-      days: 7
-    }
-    containerDeleteRetentionPolicy: {
-      enabled: true
-      days: 7
-    }
-    restorePolicy: {
-      enabled: true
-      days: 6
-    }
-  }
-}
-
-resource backupContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
-  parent: backupBlobService
-  name: backupContainerName
-  properties: {
-    publicAccess: 'None'
-  }
-}
-
-resource backupLifecycle 'Microsoft.Storage/storageAccounts/managementPolicies@2023-05-01' = {
-  parent: backupStorage
-  name: 'default'
-  properties: {
-    policy: {
-      rules: [
-        {
-          enabled: true
-          name: 'delete-daily-after-35-days'
-          type: 'Lifecycle'
-          definition: {
-            actions: {
-              baseBlob: {
-                delete: {
-                  daysAfterModificationGreaterThan: 35
-                }
-              }
-              version: {
-                delete: {
-                  daysAfterCreationGreaterThan: 35
-                }
-              }
-            }
-            filters: {
-              blobTypes: [
-                'blockBlob'
-              ]
-              prefixMatch: [
-                '${backupContainerName}/daily/'
-              ]
-            }
-          }
-        }
-        {
-          enabled: true
-          name: 'delete-monthly-after-365-days'
-          type: 'Lifecycle'
-          definition: {
-            actions: {
-              baseBlob: {
-                delete: {
-                  daysAfterModificationGreaterThan: 365
-                }
-              }
-              version: {
-                delete: {
-                  daysAfterCreationGreaterThan: 365
-                }
-              }
-            }
-            filters: {
-              blobTypes: [
-                'blockBlob'
-              ]
-              prefixMatch: [
-                '${backupContainerName}/monthly/'
-              ]
-            }
-          }
-        }
-      ]
-    }
-  }
-}
-
-// Role assignment: VM managed identity → Key Vault Secrets User
-// Built-in role ID for Key Vault Secrets User: 4633458b-17de-408a-b874-0445c86b69e6
-resource kvRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  scope: keyVault
-  name: guid(keyVault.id, vm.id, '4633458b-17de-408a-b874-0445c86b69e6')
-  properties: {
-    roleDefinitionId: subscriptionResourceId(
-      'Microsoft.Authorization/roleDefinitions',
-      '4633458b-17de-408a-b874-0445c86b69e6'
-    )
-    principalId: vm.identity.principalId
-    principalType: 'ServicePrincipal'
-  }
-}
-
-// Built-in role ID for Storage Blob Data Contributor:
-// ba92f5b4-2d11-453d-a403-e96b0029c9fe
-resource backupStorageRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  scope: backupContainer
-  name: guid(backupContainer.id, vm.id, 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')
-  properties: {
-    roleDefinitionId: subscriptionResourceId(
-      'Microsoft.Authorization/roleDefinitions',
-      'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
-    )
-    principalId: vm.identity.principalId
-    principalType: 'ServicePrincipal'
   }
 }
 
@@ -431,6 +282,44 @@ resource vm 'Microsoft.Compute/virtualMachines@2024-07-01' = {
   }
 }
 
+// Built-in role IDs: Key Vault Secrets User, Snapshot Contributor, Reader
+resource kvVmSecretsRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  scope: keyVault
+  name: guid(keyVault.id, vm.id, '4633458b-17de-408a-b874-0445c86b69e6')
+  properties: {
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      '4633458b-17de-408a-b874-0445c86b69e6'
+    )
+    principalId: vm.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource snapshotContributorRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(resourceGroup().id, vm.id, '5e467623-bb1f-42f4-a55d-6e525e11384b')
+  properties: {
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      '5e467623-bb1f-42f4-a55d-6e525e11384b'
+    )
+    principalId: vm.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource snapshotReaderRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(resourceGroup().id, vm.id, 'acdd72a7-3385-48ef-bd42-f606fba81ae7')
+  properties: {
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      'acdd72a7-3385-48ef-bd42-f606fba81ae7'
+    )
+    principalId: vm.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
 module monitoring 'monitoring.bicep' = {
   name: 'openclaw-monitoring'
   params: {
@@ -445,8 +334,6 @@ output vmFqdn string = publicIp.properties.dnsSettings.fqdn
 output sshCommand string = 'ssh ${adminUsername}@${publicIp.properties.dnsSettings.fqdn}'
 output keyVaultName string = keyVault.name
 output keyVaultUri string = keyVault.properties.vaultUri
-output backupStorageAccountName string = backupStorage.name
-output backupContainerName string = backupContainer.name
 output logAnalyticsWorkspaceName string = monitoring.outputs.workspaceName
 output openClawContentTableName string = monitoring.outputs.contentTable
 output gatewayNote string = 'Gateway and OTLP remain loopback-only. Use an authenticated tunnel; private-network cutover is separate.'

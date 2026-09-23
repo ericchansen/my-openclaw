@@ -315,39 +315,6 @@ resource diskCriticalAlert 'Microsoft.Insights/scheduledQueryRules@2023-12-01' =
   }
 }
 
-resource backupHealthAlert 'Microsoft.Insights/scheduledQueryRules@2023-12-01' = {
-  name: 'openclaw-backup-health'
-  kind: 'LogAlert'
-  location: location
-  properties: {
-    displayName: 'OpenClaw backup failed or is stale'
-    description: 'Structured runtime health reports a failed backup or age over 36 hours.'
-    enabled: true
-    severity: 1
-    scopes: [
-      logAnalytics.id
-    ]
-    evaluationFrequency: 'PT5M'
-    windowSize: 'PT10M'
-    criteria: {
-      allOf: [
-        {
-          query: 'Syslog | where Facility == "local6" and ProcessName == "openclaw-health" | extend d = parse_json(SyslogMessage) | where tobool(d.backupOk) == false or tolong(d.backupAgeSeconds) > 129600'
-          timeAggregation: 'Count'
-          operator: 'GreaterThan'
-          threshold: 0
-          failingPeriods: {
-            numberOfEvaluationPeriods: 1
-            minFailingPeriodsToAlert: 1
-          }
-        }
-      ]
-    }
-    autoMitigate: true
-    actions: alertActions
-  }
-}
-
 resource capacityPressureAlert 'Microsoft.Insights/scheduledQueryRules@2023-12-01' = {
   name: 'openclaw-capacity-pressure'
   kind: 'LogAlert'
