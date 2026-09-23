@@ -2,7 +2,7 @@
 
 Use the exact official release and integrity values in
 [runtime-versions.json](../config/runtime-versions.json), currently OpenClaw 2026.9.2.
-Systemd owns the Gateway, backup/health timers, and deployed OTel collector.
+Systemd owns the Gateway, snapshot/health timers, and deployed OTel collector.
 Native OpenClaw automations own scheduled jobs; do not create duplicate schedulers.
 
 ## Health and incidents
@@ -20,7 +20,7 @@ openclaw automations status --json
 openclaw automations list --all --json
 openclaw tasks audit --json
 openclaw tasks list --runtime subagent --json
-systemctl status openclaw-gateway openclaw-otel-collector openclaw-backup.timer openclaw-health.timer
+systemctl status openclaw-gateway openclaw-otel-collector openclaw-vm-snapshot.timer openclaw-health.timer
 ```
 
 Use `/health`, not a model-backed completion route. A healthy endpoint is not proof

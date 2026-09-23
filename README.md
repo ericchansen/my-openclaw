@@ -1,7 +1,7 @@
 # OpenClaw on Azure
 
 Reproducible Azure VM deployment for a private OpenClaw gateway with Telegram,
-Discord, Key Vault SecretRefs, verified Blob backups, and Azure Monitor.
+Discord, Key Vault SecretRefs, daily OS-disk snapshots, and Azure Monitor.
 
 The runtime is the unmodified official OpenClaw **2026.9.2** on Node **22.23.1**.
 [Runtime versions and integrity pins](config/runtime-versions.json) are authoritative;
@@ -14,7 +14,7 @@ and blocked authorized maintenance. Agents choose. See the
 
 ## Operating boundaries
 
-- Systemd owns the Gateway, backup/health timers, and local OTel collector.
+- Systemd owns the Gateway, snapshot/health timers, and local OTel collector.
 - The Gateway binds to loopback; remote access requires authenticated, reviewed routing.
 - Existing channels, identities, approved family routing, credentials, and data are preserved.
 - Owner administration is separate from explicitly approved trusted-family sharing.
@@ -83,10 +83,10 @@ Then use the guarded [runtime application script](scripts/apply-runtime.ps1):
   -ResourceGroupName "<resource-group>" `
   -VerifiedSnapshotId "<succeeded-current-os-disk-snapshot-resource-id>" `
   -VerifiedBackupArchive "<absolute-on-host-native-archive-path>" `
-  -KeyVaultName "<vault-name>" -StorageAccountName "<storage-account>"
+  -KeyVaultName "<vault-name>"
 ```
 
-Supply the native archive, not the outer Blob bundle. The script verifies host
+Supply the native archive, not a Blob bundle. The script verifies host
 identity, snapshot provenance, and backup evidence before the maintenance-locked
 update. Failures after mutation stay offline; follow
 [operations and rollback](docs/operations.md), not a bare global npm update.
