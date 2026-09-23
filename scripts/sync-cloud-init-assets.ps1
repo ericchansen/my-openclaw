@@ -4,16 +4,16 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $sources = @(
     "config\openclaw-gateway.service",
-    "config\openclaw-backup.service",
-    "config\openclaw-backup.timer",
     "config\openclaw-health.service",
     "config\openclaw-health.timer",
+    "config\openclaw-vm-snapshot.service",
+    "config\openclaw-vm-snapshot.timer",
     "config\openclaw-journald.conf",
     "config\openclaw-otel-collector.service",
     "config\otelcol-openclaw.yaml",
     "scripts\install-openclaw-runtime.sh",
-    "scripts\openclaw-backup.sh",
     "scripts\openclaw-restore-verify.sh",
+    "scripts\openclaw-create-vm-snapshot.sh",
     "scripts\openclaw-health-check.sh",
     "scripts\openclaw-availability-check.py",
     "scripts\openclaw-keyvault-resolver.py",
@@ -41,8 +41,8 @@ $versions = Get-Content -LiteralPath (Join-Path $root "config\runtime-versions.j
 $values = @{
     "__ADMIN_USERNAME__" = "azureuser"
     "__KEY_VAULT_NAME__" = ("k" * 24)
-    "__STORAGE_ACCOUNT_NAME__" = ("s" * 24)
-    "__STORAGE_CONTAINER_NAME__" = "openclaw-backups"
+    "__RESOURCE_GROUP_NAME__" = "rg-openclaw"
+    "__VM_NAME__" = "openclaw-vm"
     "__OPENCLAW_VERSION__" = $versions.openclaw.version
     "__OPENCLAW_INTEGRITY__" = $versions.openclaw.npmIntegrity
     "__DIAGNOSTICS_OTEL_VERSION__" = $versions.packages.'@openclaw/diagnostics-otel'.version

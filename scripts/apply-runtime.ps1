@@ -14,9 +14,6 @@ param(
     [string]$VerifiedBackupArchive,
     [Parameter(Mandatory = $true)]
     [string]$KeyVaultName,
-    [Parameter(Mandatory = $true)]
-    [string]$StorageAccountName,
-    [string]$StorageContainerName = "openclaw-backups",
     [switch]$SkipGatewayRestart,
     [switch]$UseTailscaleSsh
 )
@@ -161,8 +158,8 @@ $installArgs = @(
     "--asset-dir", $remoteDir,
     "--user", $AdminUsername,
     "--key-vault", $KeyVaultName,
-    "--storage-account", $StorageAccountName,
-    "--storage-container", $StorageContainerName,
+    "--resource-group", $ResourceGroupName,
+    "--vm-name", $VmName,
     "--openclaw-version", $versions.openclaw.version,
     "--openclaw-integrity", $versions.openclaw.npmIntegrity,
     "--diagnostics-otel-version", $versions.packages.'@openclaw/diagnostics-otel'.version,
