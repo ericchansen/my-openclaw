@@ -54,7 +54,26 @@ class RuntimeBundleTests(unittest.TestCase):
         self.assertIn("encoding: base64", config)
         self.assertIn("__RUNTIME_BUNDLE_XZ_B64__", config)
         self.assertIn("[tar, -xJf, /opt/openclaw/runtime-assets.tar.xz", config)
+        self.assertIn("--resource-group, __RESOURCE_GROUP_NAME__", config)
+        self.assertIn("--vm-name, __VM_NAME__", config)
         self.assertNotIn("encoding: gzip+base64", config)
+        self.assertNotIn("__STORAGE_ACCOUNT_NAME__", config)
+        apply = (root / "scripts" / "apply-runtime.ps1").read_text()
+        self.assertIn('"--resource-group", $ResourceGroupName', apply)
+        self.assertNotIn("--storage-account", apply)
+
+    def test_runtime_bundle_contains_only_retained_health_and_snapshot_units(self):
+        root = Path(__file__).resolve().parents[1]
+        compressed = base64.b64decode(
+            (root / "infra" / "runtime-assets.tar.xz.b64").read_bytes(), validate=True)
+        with tarfile.open(fileobj=io.BytesIO(compressed), mode="r:xz") as archive:
+            names = set(archive.getnames())
+        self.assertIn("openclaw-runtime-health-probe.service", names)
+        self.assertIn("openclaw-runtime-health-probe.timer", names)
+        self.assertIn("openclaw-runtime-health-probe.sh", names)
+        self.assertIn("openclaw-vm-snapshot.service", names)
+        self.assertIn("openclaw-vm-snapshot.timer", names)
+        self.assertIn("openclaw-create-vm-snapshot.sh", names)
 
     def test_sorted_flat_regular_archive_preserves_normalized_content(self):
         with tempfile.TemporaryDirectory() as directory:

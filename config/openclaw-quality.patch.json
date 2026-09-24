@@ -114,12 +114,6 @@
         "thinking": "low",
         "runTimeoutSeconds": 2700
       },
-      "heartbeat": {
-        "every": "2h",
-        "model": "github-copilot/gpt-5.6-sol",
-        "lightContext": true,
-        "isolatedSession": true
-      },
       "sandbox": {
         "mode": "non-main",
         "backend": "docker",
@@ -167,7 +161,6 @@
     "entries": {
       "healthcheck": {
         "workspace": "/home/azureuser/.openclaw/workspace-healthcheck",
-        "heartbeat": { "every": "0m" },
         "sandbox": {
           "mode": "all",
           "scope": "agent",

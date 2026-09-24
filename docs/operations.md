@@ -2,8 +2,11 @@
 
 Use the exact official release and integrity values in
 [runtime-versions.json](../config/runtime-versions.json), currently OpenClaw 2026.9.2.
-Systemd owns the Gateway, backup/health timers, and deployed OTel collector.
-Native OpenClaw automations own scheduled jobs; do not create duplicate schedulers.
+OpenClaw owns heartbeat through its documented defaults; this repository does not
+override heartbeat behavior. Systemd does not own heartbeat. Systemd owns the
+Gateway, the fifteen-minute runtime health probe, the snapshot timer, and the
+deployed OTel collector. Use standard OpenClaw status and Doctor mechanisms for
+operator-led diagnostics; do not add a duplicate recurring Doctor schedule.
 
 ## Health and incidents
 
@@ -20,7 +23,8 @@ openclaw automations status --json
 openclaw automations list --all --json
 openclaw tasks audit --json
 openclaw tasks list --runtime subagent --json
-systemctl status openclaw-gateway openclaw-otel-collector openclaw-backup.timer openclaw-health.timer
+systemctl status openclaw-gateway openclaw-otel-collector \
+  openclaw-vm-snapshot.timer openclaw-runtime-health-probe.timer
 ```
 
 Use `/health`, not a model-backed completion route. A healthy endpoint is not proof
@@ -30,24 +34,24 @@ inspect `journalctl -u openclaw-gateway --no-pager`, and preserve private diagno
 before restart. Inspect task/job history before retrying; never replay personal jobs
 merely to clear an alert.
 
-The [health helper](../scripts/openclaw-health-check.sh) emits bounded redacted
-records, including early capacity samples. Unknown diagnostics remain unknown.
-Capacity alerts do not authorize disabling features or changing service budgets:
-capture process/cgroup attribution first. Health scheduling lives in [config](../config/);
-both infrastructure modes use the [shared monitoring module](../infra/monitoring.bicep).
+The [runtime health probe](../scripts/openclaw-runtime-health-probe.sh) checks only
+the Gateway endpoint/service, memory/load capacity, and root-disk usage. It emits
+one `runtime_health_probe` record and exits nonzero when the Gateway or measured
+host capacity is unhealthy. It never runs Doctor, task, channel, agent, security,
+or other extended diagnostic work.
 
-Task settlement checks cover visible terminal subagent tasks with unfinished
-notification delivery, not hidden queue corruption. The helper's
-`OPENCLAW_TASK_SETTLEMENT_MAX_AGE_SECONDS` defaults to 2400 (allowed 60–3600).
-Preserve the margin over the upstream
-[30-minute required-delivery window](https://github.com/openclaw/openclaw/blob/v2026.9.2/src/agents/subagents/registry/subagent-registry-helpers.ts).
-An empty task inventory or passing canary cannot establish that old task delivery
-is repaired; malformed/incomplete inventories fail closed.
+Diagnostic contacts receive runtime-probe unhealthy/missing, one disk-pressure,
+and one capacity-pressure alert. Escalation contacts receive only the sustained
+Azure VM-availability outage and its native recovery notification. Budget
+recipients remain separate. Contact arrays are declarative parameters, not
+discovered from existing groups, and empty arrays explicitly disable that email
+route. Both infrastructure modes use the
+[shared monitoring module](../infra/monitoring.bicep).
 
 ## Safe configuration changes
 
 1. Locate the active file with `openclaw config file`; preserve it and its ownership.
-2. Create a verified backup and succeeded current-OS-disk snapshot
+2. Retain the reviewed Git source/IaC commit and create a succeeded current-OS-disk snapshot
    using [the recovery procedure](backup-restore.md#pre-change-recovery-point).
 3. Inspect installed help/schema and prepare the smallest reviewed patch.
 4. Dry-run with `openclaw config patch --file <patch> --dry-run`, then apply through
@@ -96,8 +100,8 @@ No chat bindings does not mean no scheduled work: legacy agents can still have
 enabled skill-review jobs and disabled heartbeat jobs. Preserve personal jobs
 and active assistants; retire only housekeeping owned by the removed agents.
 
-Follow the pre-change recovery procedure, including verified SQLite backups of
-shared state and initialized agent databases before removing canonical history.
+Follow the pre-change recovery procedure, including a succeeded current-OS-disk
+snapshot and the reviewed Git source/IaC commit before removing canonical history.
 Inspect the installed `agents delete --help` and use
 `openclaw agents delete <reviewed-agent-id> --force --json` against the reachable,
 authenticated Gateway. The pinned supported deletion flow removes associated
@@ -128,13 +132,14 @@ verifies its SHA-256, and stages regular files beneath root-owned, non-writable
 ancestors. The private staging directory is retained for delayed installer
 callbacks and recovery; runtime-user home directories are never execution sources.
 
-The updater re-verifies the native archive, checks exact package pins, and shares
-the stable root-owned `/etc/openclaw/maintenance.lock` with backup/health readers.
-Maintenance takes an exclusive lock; contention exits before mutation.
-Never delete/replace that inode or run unlocked when it is missing or unsafe.
+The updater checks exact package pins and uses the stable root-owned
+`/etc/openclaw/maintenance.lock` for update serialization. Snapshot work uses its
+own snapshot lock; the updater pauses the probe and snapshot timers and drains
+their services before mutation. Never delete or replace the maintenance-lock
+inode or run an update unlocked when it is missing or unsafe.
 
-Only OpenClaw timers are paused. Existing backup/health work and visible tasks
-drain boundedly; an in-progress backup is not killed. Pinned sandbox-image
+Only declared OpenClaw timers are paused. Existing snapshot/probe work and visible tasks
+drain boundedly; an in-progress snapshot is not killed. Pinned sandbox-image
 provisioning runs before Gateway shutdown. A pre-shutdown failure leaves the
 working Gateway unchanged and restores previously active timers.
 
@@ -151,7 +156,8 @@ containers in an approved window.
 For config/unit rollback, restore the exact pre-change files and ownership,
 reload systemd if units changed, validate, and start once. Recheck real channels,
 tools, jobs, and timers. Package, state, and disk recovery are separate
-[rollback layers](backup-restore.md#rollback-layers); a downgrade does not undo SQLite migration.
+[rollback layers](backup-restore.md#rollback-layers); a downgrade does not undo a
+state migration.
 
 The [Gateway unit](../config/openclaw-gateway.service) uses `Restart=always` because
 a config reload can exit successfully. Exit 78 blocks invalid-config restart loops;

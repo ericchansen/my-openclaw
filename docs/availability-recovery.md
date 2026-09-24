@@ -41,20 +41,22 @@ The template `healthcheck` entry has no model, so it inherits the native default
 A Copilot-harness model is a poor canary: those exec receipts currently omit the
 exit-status proof. Live may pin a native utility model for that probe.
 
-Successful evidence is cached for up to one hour; missing, stale, malformed, or
-failed evidence is actionable through the [health helper](../scripts/openclaw-health-check.sh).
-Force a fresh check as the configured runtime user after changes/restarts:
+Successful availability-canary evidence is cached for up to one hour. The
+[runtime health probe](../scripts/openclaw-runtime-health-probe.sh) intentionally
+does not run or evaluate that canary. Inspect or force the canary only during an
+operator-led diagnostic using standard OpenClaw mechanisms after changes/restarts:
 
 ```bash
 python3 /usr/local/libexec/openclaw-availability-check \
-  --status-file /var/lib/openclaw-runtime/health/availability.json --force
+  --status-file /var/lib/openclaw-runtime/availability.json --force
 ```
 
 ## Acceptance and remaining boundaries
 
 Require a cold sandbox tool turn, the previously failing existing conversation,
-real channel delivery, scheduled execution, a forced canary, and verified backup.
-Retain [archive/snapshot recovery points](backup-restore.md). Never automatically
+real channel delivery, scheduled execution, a forced canary, and a succeeded
+current-OS-disk snapshot. Retain [snapshot recovery points](backup-restore.md).
+Never automatically
 replay missed personal or health-related jobs just to make status green.
 
 The canary does not prove human-client ingress, recipient authorization, browser

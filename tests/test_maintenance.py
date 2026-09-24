@@ -15,7 +15,6 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "scripts"
 INSTALLER = (SCRIPTS / "install-openclaw-runtime.sh").read_text()
 UPDATER = (SCRIPTS / "openclaw-update.sh").read_text()
-BACKUP = (SCRIPTS / "openclaw-backup.sh").read_text()
 
 
 def lock_block(source):
@@ -34,10 +33,10 @@ class MaintenanceOrderingTests(unittest.TestCase):
             '\n  install_otel_collector\n',
             'npm install --global --omit=dev "openclaw@',
             'cat > /etc/openclaw/runtime.env',
-            'install -m 0755 "$asset_dir/openclaw-backup.sh"',
+            'install -m 0755 "$asset_dir/openclaw-create-vm-snapshot.sh"',
             '> "/etc/systemd/system/$unit"',
             "systemctl daemon-reload",
-            "systemctl restart openclaw-backup.timer",
+            'systemctl restart "${runtime_timers[@]}"',
         ):
             with self.subTest(mutation=mutation):
                 self.assertLess(delegate, INSTALLER.index(mutation))
@@ -48,10 +47,10 @@ class MaintenanceOrderingTests(unittest.TestCase):
         stop = UPDATER.index("\ngateway_stopped=true\nsystemctl stop")
         for validation in (
             'expected_package_root="${global_prefix}/lib/node_modules/openclaw"',
-            "openclaw backup verify",
+            'snapshot_evidence_lower="${snapshot_evidence,,}"',
             'verify_registry_pin openclaw "$target_version"',
             'openclaw update status --json',
-            'for service in openclaw-backup.service openclaw-health.service',
+            'for service in openclaw-runtime-health-probe.service openclaw-vm-snapshot.service',
             '\nbash "$sandbox_provisioner"',
         ):
             with self.subTest(validation=validation):
@@ -66,14 +65,17 @@ class MaintenanceOrderingTests(unittest.TestCase):
         ready = UPDATER.index("\nupdate_succeeded=true\n")
         unlock = UPDATER.index("\nflock --unlock 8\n", ready)
         self.assertLess(
-            unlock, UPDATER.index("systemctl start openclaw-backup.timer", ready)
+            unlock, UPDATER.index("systemctl start openclaw-runtime-health-probe.timer", ready)
         )
 
     def test_only_own_timers_are_paused_and_no_service_is_killed_for_drain(self):
         drain = UPDATER.split("# Stop only our timers.", 1)[1].split(
             '\nbash "$sandbox_provisioner"', 1
         )[0]
-        self.assertIn("openclaw-backup.timer openclaw-health.timer", drain)
+        self.assertIn(
+            "openclaw-runtime-health-probe.timer openclaw-vm-snapshot.timer",
+            drain,
+        )
         self.assertNotIn("systemctl stop \"$service\"", drain)
         self.assertNotIn("docker", drain)
         self.assertNotIn("kill", drain)
@@ -81,7 +83,7 @@ class MaintenanceOrderingTests(unittest.TestCase):
 
     def test_fresh_install_releases_lock_before_starting_timers(self):
         finish = INSTALLER.split(
-            "\nsystemctl enable openclaw-backup.timer openclaw-health.timer\n", 1
+            '\nsystemctl enable "${runtime_timers[@]}"\n', 1
         )[1]
         self.assertIn('if [[ "$install_stopped_runtime" != true ]]; then', finish)
         self.assertLess(finish.index("flock --unlock 8"), finish.index("systemctl restart"))
@@ -89,6 +91,12 @@ class MaintenanceOrderingTests(unittest.TestCase):
     def test_canary_helper_and_private_workspace_are_provisioned(self):
         required = re.search(r"required_assets=\((.*?)\n\)", INSTALLER, re.DOTALL)[1].split()
         self.assertIn("openclaw-availability-check.py", required)
+        self.assertIn("openclaw-vm-snapshot.service", required)
+        self.assertIn("openclaw-vm-snapshot.timer", required)
+        self.assertIn("openclaw-create-vm-snapshot.sh", required)
+        self.assertIn("openclaw-runtime-health-probe.service", required)
+        self.assertIn("openclaw-runtime-health-probe.timer", required)
+        self.assertIn("openclaw-runtime-health-probe.sh", required)
         self.assertIn(
             'install -o root -g root -m 0555 \\\n'
             '  "$asset_dir/openclaw-availability-check.py" \\\n'
@@ -105,6 +113,11 @@ class MaintenanceOrderingTests(unittest.TestCase):
         )
         self.assertIn('for directory in "$openclaw_state_dir" "$healthcheck_workspace"', INSTALLER)
         self.assertIn('! -L "$directory"', INSTALLER)
+        self.assertIn("validate_snapshot_rbac()", INSTALLER)
+        self.assertIn("7efff54f-a5b4-42b5-a1c5-5411624893ce", INSTALLER)
+        self.assertIn("acdd72a7-3385-48ef-bd42-f606fba81ae7", INSTALLER)
+        self.assertLess(INSTALLER.index("validate_snapshot_rbac"),
+                        INSTALLER.index('systemctl enable "${runtime_timers[@]}"'))
 
 
 @unittest.skipUnless(
@@ -126,8 +139,6 @@ class MaintenanceExecutionTests(unittest.TestCase):
         self.environment.update(
             TEST_EVENTS=str(self.events),
             TEST_ROOT=str(self.scratch),
-            OPENCLAW_BACKUP_ACCOUNT="testaccount",
-            OPENCLAW_BACKUP_CONTAINER="testcontainer",
             STATE_DIRECTORY=str(self.scratch / "state"),
         )
 
@@ -177,49 +188,21 @@ stat() {
                     self.assertEqual(result.returncode, 75, result.stderr)
                     self.assertFalse((self.scratch / "mutated").exists())
 
-    def test_exclusive_maintenance_skips_backup_without_changing_status(self):
-        state = self.scratch / "state"
-        state.mkdir()
-        status = state / "backup-status.json"
-        status.write_text('{"result":"succeeded","timestamp":"existing"}')
-        before = status.read_bytes()
-        path = self.fixture_script("backup", BACKUP)
-        with self.lock.open("r") as writer:
-            fcntl.flock(writer, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            result = self.run_script(path)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('"reason":"maintenance"', result.stdout)
-        self.assertEqual(status.read_bytes(), before)
-        self.assertFalse((state / "backup-work").exists())
-
-    def test_backup_shared_gate_allows_another_reader(self):
-        gate = BACKUP.split("maintenance_lock=", 1)[1].split("runtime_root=", 1)[0]
-        path = self.fixture_script("reader", "maintenance_lock=" + gate + "echo acquired\n")
-        with self.lock.open("r") as reader:
-            fcntl.flock(reader, fcntl.LOCK_SH | fcntl.LOCK_NB)
-            result = self.run_script(path)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout.strip(), "acquired")
-
     def test_missing_unsafe_and_symlink_locks_fail_closed(self):
-        path = self.fixture_script("backup", BACKUP)
-        self.lock.unlink()
-        result = self.run_script(path)
-        self.assertEqual(result.returncode, 78, result.stderr)
-        self.lock.write_text("")
+        path = self.fixture_script("install", lock_block(INSTALLER) + "echo mutated\n")
         result = self.run_script(path, TEST_LOCK_METADATA="1000:1000:666:1")
         self.assertEqual(result.returncode, 78, result.stderr)
+        self.assertNotIn("mutated", result.stdout)
         target = self.scratch / "target"
         target.write_text("")
         self.lock.unlink()
         self.lock.symlink_to(target)
         result = self.run_script(path)
         self.assertEqual(result.returncode, 78, result.stderr)
-        self.assertFalse((self.scratch / "state").exists())
+        self.assertNotIn("mutated", result.stdout)
 
     def test_lock_errors_are_not_reported_as_contention(self):
         for source, name in (
-            (BACKUP, "backup"),
             (lock_block(INSTALLER), "install"),
             (lock_block(UPDATER), "update"),
         ):
@@ -298,7 +281,7 @@ node() { echo v22.22.0; }
             "asset-dir": assets,
             "user": "runtime",
             "key-vault": "test-vault",
-            "storage-account": "testaccount",
+            "resource-group": "rg-openclaw",
             "openclaw-version": "2026.9.1",
             "diagnostics-otel-version": "2026.9.1",
             "node-version": "22.22.0",
@@ -313,7 +296,6 @@ node() { echo v22.22.0; }
             "sandbox-archive-url": "https://example.invalid/source",
             "sandbox-archive-sha256": "d" * 64,
             "sandbox-browser-contract": "reviewed",
-            "verified-backup": self.scratch / "backup.tar.gz",
             "snapshot-evidence": "/subscriptions/test/resourceGroups/test/providers/Microsoft.Compute/snapshots/test",
         }
         for name in (
@@ -354,7 +336,7 @@ systemctl() {
   case "$1" in
     is-active) return 0 ;;
     show)
-      if [[ "$TEST_SCENARIO" == busy && "$2" == openclaw-backup.service ]]; then
+      if [[ "$TEST_SCENARIO" == busy && "$2" == openclaw-vm-snapshot.service ]]; then
         echo active
       else
         echo inactive
@@ -375,14 +357,14 @@ provision_sandbox_images() {
 """
         return self.fixture_script("lifecycle", lock_block(UPDATER) + setup + lifecycle + after)
 
-    def test_busy_legacy_backup_preserves_gateway_and_restores_timers(self):
+    def test_busy_legacy_snapshot_preserves_gateway_and_restores_timers(self):
         result = self.run_script(self.lifecycle_script(), TEST_SCENARIO="busy")
         self.assertEqual(result.returncode, 75, result.stderr)
         events = self.events.read_text()
-        self.assertIn("stop openclaw-backup.timer", events)
+        self.assertIn("stop openclaw-vm-snapshot.timer", events)
         self.assertIn("timer-restored-after-unlock", events)
         self.assertNotIn("stop openclaw-gateway.service", events)
-        self.assertNotIn("stop openclaw-backup.service", events)
+        self.assertNotIn("stop openclaw-vm-snapshot.service", events)
         self.assertNotIn("provision", events)
 
     def test_invalid_image_preserves_gateway_and_restores_timers(self):

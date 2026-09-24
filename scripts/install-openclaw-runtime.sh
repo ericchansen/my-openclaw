@@ -8,8 +8,8 @@ fi
 
 openclaw_user=azureuser
 key_vault_name=
-storage_account=
-storage_container=openclaw-backups
+resource_group=
+vm_name=openclaw-vm
 openclaw_version=
 openclaw_integrity=
 diagnostics_otel_version=
@@ -29,7 +29,6 @@ sandbox_source_commit=
 sandbox_archive_url=
 sandbox_archive_sha256=
 sandbox_browser_contract=
-verified_backup=
 snapshot_evidence=
 restart_gateway=true
 asset_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -40,8 +39,8 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --user) openclaw_user="$2"; shift 2 ;;
     --key-vault) key_vault_name="$2"; shift 2 ;;
-    --storage-account) storage_account="$2"; shift 2 ;;
-    --storage-container) storage_container="$2"; shift 2 ;;
+    --resource-group) resource_group="$2"; shift 2 ;;
+    --vm-name) vm_name="$2"; shift 2 ;;
     --openclaw-version) openclaw_version="$2"; shift 2 ;;
     --openclaw-integrity) openclaw_integrity="$2"; shift 2 ;;
     --diagnostics-otel-version) diagnostics_otel_version="$2"; shift 2 ;;
@@ -61,7 +60,6 @@ while [[ $# -gt 0 ]]; do
     --sandbox-archive-url) sandbox_archive_url="$2"; shift 2 ;;
     --sandbox-archive-sha256) sandbox_archive_sha256="$2"; shift 2 ;;
     --sandbox-browser-contract) sandbox_browser_contract="$2"; shift 2 ;;
-    --verified-backup) verified_backup="$2"; shift 2 ;;
     --snapshot-evidence) snapshot_evidence="$2"; shift 2 ;;
     --asset-dir) asset_dir="$2"; shift 2 ;;
     --skip-gateway-restart) restart_gateway=false; shift ;;
@@ -72,8 +70,8 @@ done
 [[ "$openclaw_user" =~ ^[a-z_][a-z0-9_-]*$ ]] || exit 64
 [[ "$key_vault_name" =~ ^[a-zA-Z0-9][a-zA-Z0-9-]{1,22}[a-zA-Z0-9]$ ]] || exit 64
 [[ "$key_vault_name" != *--* ]] || exit 64
-[[ "$storage_account" =~ ^[a-z0-9]{3,24}$ ]] || exit 64
-[[ "$storage_container" =~ ^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$ ]] || exit 64
+[[ "$resource_group" =~ ^[A-Za-z0-9._()-]{1,90}$ && "$resource_group" != *. ]] || exit 64
+[[ "$vm_name" =~ ^[A-Za-z0-9._()-]{1,64}$ && "$vm_name" != *. ]] || exit 64
 [[ "$openclaw_version" =~ ^[0-9]{4}\.[0-9]+\.[0-9]+$ ]] || exit 64
 [[ "$diagnostics_otel_version" =~ ^[0-9]{4}\.[0-9]+\.[0-9]+$ ]] || exit 64
 [[ "$node_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 64
@@ -170,16 +168,15 @@ run_as_openclaw() {
 
 required_assets=(
   openclaw-gateway.service
-  openclaw-backup.service
-  openclaw-backup.timer
-  openclaw-health.service
-  openclaw-health.timer
+  openclaw-runtime-health-probe.service
+  openclaw-runtime-health-probe.timer
+  openclaw-vm-snapshot.service
+  openclaw-vm-snapshot.timer
   openclaw-journald.conf
   openclaw-otel-collector.service
   otelcol-openclaw.yaml
-  openclaw-backup.sh
-  openclaw-restore-verify.sh
-  openclaw-health-check.sh
+  openclaw-create-vm-snapshot.sh
+  openclaw-runtime-health-probe.sh
   openclaw-availability-check.py
   openclaw-keyvault-resolver.py
   openclaw-gateway-launch.py
@@ -222,7 +219,6 @@ if [[ "$gateway_was_active" == true && "$install_stopped_runtime" != true ]]; th
   # It calls this installer back only after its own validated shutdown.
   exec bash "$asset_dir/openclaw-update.sh" \
     --target-version "$openclaw_version" \
-    --verified-backup "$verified_backup" \
     --snapshot-evidence "$snapshot_evidence" \
     --user "$openclaw_user" \
     --openclaw-integrity "$openclaw_integrity" \
@@ -458,14 +454,11 @@ IFS=: read -r otel_account _ otel_uid otel_gid _ otel_home otel_shell \
 install -d -o root -g root -m 0755 /etc/openclaw /usr/local/bin /usr/local/sbin
 cat > /etc/openclaw/runtime.env <<EOF
 OPENCLAW_KEY_VAULT=${key_vault_name}
-OPENCLAW_BACKUP_ACCOUNT=${storage_account}
-OPENCLAW_BACKUP_CONTAINER=${storage_container}
-OPENCLAW_HEALTH_URL=http://127.0.0.1:18789/health
-OPENCLAW_BACKUP_STATUS=/var/lib/openclaw-runtime/backup-status.json
-OPENCLAW_BACKUP_MAX_AGE_SECONDS=129600
-OPENCLAW_HEALTH_STATE_DIR=/var/lib/openclaw-runtime/health
-OPENCLAW_AUTOMATION_RECENT_FAILURE_SECONDS=7200
-OPENCLAW_AUTOMATION_FAILURE_THRESHOLD=2
+OPENCLAW_RUNTIME_USER=${openclaw_user}
+OPENCLAW_RUNTIME_HOME=${openclaw_home}
+OPENCLAW_AZURE_RESOURCE_GROUP=${resource_group}
+OPENCLAW_AZURE_VM_NAME=${vm_name}
+OPENCLAW_GATEWAY_HEALTH_URL=http://127.0.0.1:18789/health
 EOF
 chown root:root /etc/openclaw/runtime.env
 chmod 0644 /etc/openclaw/runtime.env
@@ -473,9 +466,8 @@ touch /etc/openclaw/keyvault-allowlist
 chown root:root /etc/openclaw/keyvault-allowlist
 chmod 0644 /etc/openclaw/keyvault-allowlist
 
-install -m 0755 "$asset_dir/openclaw-backup.sh" /usr/local/sbin/openclaw-backup
-install -m 0755 "$asset_dir/openclaw-restore-verify.sh" /usr/local/sbin/openclaw-restore-verify
-install -m 0755 "$asset_dir/openclaw-health-check.sh" /usr/local/sbin/openclaw-health-check
+install -m 0755 "$asset_dir/openclaw-create-vm-snapshot.sh" /usr/local/sbin/openclaw-create-vm-snapshot
+install -m 0755 "$asset_dir/openclaw-runtime-health-probe.sh" /usr/local/sbin/openclaw-runtime-health-probe
 install -o root -g root -m 0555 \
   "$asset_dir/openclaw-availability-check.py" \
   /usr/local/libexec/openclaw-availability-check
@@ -540,7 +532,16 @@ if [[ -n "$gog_executable" ]]; then
   ln -sfn -- /usr/local/bin/openclaw-gog-launch /usr/local/bin/gog
   chown -h root:root /usr/local/bin/gog
 fi
-for unit in openclaw-gateway.service openclaw-backup.service openclaw-health.service; do
+runtime_services=(
+  openclaw-gateway.service
+  openclaw-runtime-health-probe.service
+  openclaw-vm-snapshot.service
+)
+runtime_timers=(
+  openclaw-runtime-health-probe.timer
+  openclaw-vm-snapshot.timer
+)
+for unit in "${runtime_services[@]}"; do
   sed "s/__OPENCLAW_USER__/${openclaw_user}/g" "$asset_dir/$unit" \
     > "/etc/systemd/system/$unit"
 done
@@ -550,8 +551,9 @@ install -o root -g openclaw-otel -m 0640 \
 install -o root -g root -m 0644 \
   "$asset_dir/openclaw-otel-collector.service" \
   /etc/systemd/system/openclaw-otel-collector.service
-install -m 0644 "$asset_dir/openclaw-backup.timer" /etc/systemd/system/openclaw-backup.timer
-install -m 0644 "$asset_dir/openclaw-health.timer" /etc/systemd/system/openclaw-health.timer
+for unit in "${runtime_timers[@]}"; do
+  install -m 0644 "$asset_dir/$unit" "/etc/systemd/system/$unit"
+done
 journald_changed=false
 install -d -o root -g root -m 0755 /etc/systemd/journald.conf.d
 if ! cmp --silent \
@@ -562,13 +564,11 @@ if ! cmp --silent \
     /etc/systemd/journald.conf.d/60-openclaw-retention.conf
   journald_changed=true
 fi
-chmod 0644 /etc/systemd/system/openclaw-*.service
+chmod 0644 "${runtime_services[@]/#//etc/systemd/system/}"
 install -d -o "$openclaw_user" -g "$openclaw_user" -m 0750 \
   /var/log/openclaw /var/lib/openclaw-runtime
 install -d -o openclaw-otel -g openclaw-otel -m 0750 /var/lib/openclaw-otel
 /usr/local/sbin/openclaw-telemetry-access
-install -d -o "$openclaw_user" -g "$openclaw_user" -m 0700 \
-  /var/lib/openclaw-runtime/health
 if [[ ! -e "$openclaw_state_dir" ]]; then
   install -d -o "$openclaw_user" -g "$openclaw_user" -m 0700 "$openclaw_state_dir"
 fi
@@ -663,11 +663,37 @@ else
   printf '%s\n' \
     'The gateway was not active, so it was neither enabled nor started. Complete onboarding before enabling it.'
 fi
-systemctl enable openclaw-backup.timer openclaw-health.timer
+validate_snapshot_rbac() {
+  local principal_id resource_group_id assignments
+  command -v az >/dev/null || {
+    printf 'Azure CLI is required to validate snapshot permissions before enabling the timer.\n' >&2
+    exit 78
+  }
+  az login --identity --allow-no-subscriptions --output none
+  principal_id="$(az vm show --resource-group "$resource_group" --name "$vm_name" \
+    --query identity.principalId -o tsv)"
+  resource_group_id="$(az group show --name "$resource_group" --query id -o tsv)"
+  assignments="$(az role assignment list --assignee-object-id "$principal_id" \
+    --scope "$resource_group_id" --include-inherited -o json)"
+  for required_role in \
+    7efff54f-a5b4-42b5-a1c5-5411624893ce \
+    acdd72a7-3385-48ef-bd42-f606fba81ae7; do
+    jq -e --arg requiredRole "$required_role" '
+      any(.[]?; (.roleDefinitionId | ascii_downcase | endswith("/" + ($requiredRole | ascii_downcase))))
+    ' <<<"$assignments" >/dev/null || {
+      printf 'The VM identity lacks the declared snapshot Reader and Disk Snapshot Contributor roles.\n' >&2
+      exit 78
+    }
+  done
+}
+if [[ "$gateway_was_active" == true ]]; then
+  validate_snapshot_rbac
+fi
+systemctl enable "${runtime_timers[@]}"
 if [[ "$install_stopped_runtime" != true ]]; then
   flock --unlock 8
   exec 8<&-
   unset OPENCLAW_MAINTENANCE_LOCK_HELD
-  systemctl restart openclaw-backup.timer openclaw-health.timer
+  systemctl restart "${runtime_timers[@]}"
 fi
 printf 'OpenClaw runtime %s installed for %s.\n' "$openclaw_version" "$openclaw_user"

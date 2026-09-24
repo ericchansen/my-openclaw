@@ -44,7 +44,6 @@ class AvailabilityConfigTests(unittest.TestCase):
                 self.assertEqual(agent["sandbox"]["workspaceAccess"], "none")
                 self.assertFalse(agent["sandbox"]["browser"]["enabled"])
                 self.assertFalse(agent["memory"]["search"]["enabled"])
-                self.assertEqual(agent["heartbeat"]["every"], "0m")
                 self.assertTrue(agent["workspace"].endswith("workspace-healthcheck"))
 
 

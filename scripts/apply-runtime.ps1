@@ -11,12 +11,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$VerifiedSnapshotId,
     [Parameter(Mandatory = $true)]
-    [string]$VerifiedBackupArchive,
-    [Parameter(Mandatory = $true)]
     [string]$KeyVaultName,
-    [Parameter(Mandatory = $true)]
-    [string]$StorageAccountName,
-    [string]$StorageContainerName = "openclaw-backups",
     [switch]$SkipGatewayRestart,
     [switch]$UseTailscaleSsh
 )
@@ -161,8 +156,8 @@ $installArgs = @(
     "--asset-dir", $remoteDir,
     "--user", $AdminUsername,
     "--key-vault", $KeyVaultName,
-    "--storage-account", $StorageAccountName,
-    "--storage-container", $StorageContainerName,
+    "--resource-group", $ResourceGroupName,
+    "--vm-name", $VmName,
     "--openclaw-version", $versions.openclaw.version,
     "--openclaw-integrity", $versions.openclaw.npmIntegrity,
     "--diagnostics-otel-version", $versions.packages.'@openclaw/diagnostics-otel'.version,
@@ -182,7 +177,6 @@ $installArgs = @(
     "--sandbox-archive-url", $versions.upstream.archiveUrl,
     "--sandbox-archive-sha256", $versions.upstream.archiveSha256,
     "--sandbox-browser-contract", $versions.sandbox.browserContract,
-    "--verified-backup", $VerifiedBackupArchive,
     "--snapshot-evidence", $VerifiedSnapshotId
 )
 $remoteCommand = ($installArgs | ForEach-Object { ConvertTo-PosixShellLiteral ([string]$_) }) -join " "

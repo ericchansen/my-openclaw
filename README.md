@@ -1,7 +1,7 @@
 # OpenClaw on Azure
 
 Reproducible Azure VM deployment for a private OpenClaw gateway with Telegram,
-Discord, Key Vault SecretRefs, verified Blob backups, and Azure Monitor.
+Discord, Key Vault SecretRefs, daily OS-disk snapshots, and Azure Monitor.
 
 The runtime is the unmodified official OpenClaw **2026.9.2** on Node **22.23.1**.
 [Runtime versions and integrity pins](config/runtime-versions.json) are authoritative;
@@ -14,7 +14,9 @@ and blocked authorized maintenance. Agents choose. See the
 
 ## Operating boundaries
 
-- Systemd owns the Gateway, backup/health timers, and local OTel collector.
+- OpenClaw owns heartbeat through its documented defaults; this repository does not
+  override heartbeat behavior or label a systemd check as heartbeat. Systemd owns the
+  Gateway, runtime health probe, snapshot timer, and local OTel collector.
 - The Gateway binds to loopback; remote access requires authenticated, reviewed routing.
 - Existing channels, identities, approved family routing, credentials, and data are preserved.
 - Owner administration is separate from explicitly approved trusted-family sharing.
@@ -51,43 +53,51 @@ administration for secret seeding; remove that deployer assignment afterward
 unless continued administration is intentional. Regenerate changed cloud-init with
 [`scripts/sync-cloud-init-assets.ps1`](scripts/sync-cloud-init-assets.ps1) first.
 New VMs retain [baseline public networking](infra/main.bicep), not a private-network cutover.
+`-BudgetContactEmails`, `-DiagnosticsContactEmails`, and
+`-EscalationContactEmails` declare independent recipient sets. Budget recipients stay
+on the subscription-budget path. Diagnostic recipients get runtime probe missing or
+unhealthy, disk-pressure, and capacity-pressure alerts. Escalation recipients get only
+the sustained Azure VM-availability outage and its native recovery notification.
 
 Existing-host infrastructure updates require a succeeded snapshot of the current
 OS disk; obtain and retain it using [the recovery procedure](docs/backup-restore.md#pre-change-recovery-point).
 
 ```powershell
 .\deploy.ps1 -SkipCustomData `
-  -VerifiedSnapshotId "<succeeded-current-os-disk-snapshot-resource-id>"
+  -VerifiedSnapshotId "<succeeded-current-os-disk-snapshot-resource-id>" `
+  -DiagnosticsContactEmails @("<diagnostics-contact>") `
+  -EscalationContactEmails @("<escalation-contact>")
 ```
 
 Existing-host mode uses [main-existing.bicep](infra/main-existing.bicep) to refresh
-**monitoring only**, through the [shared monitoring module](infra/monitoring.bicep).
+**monitoring and the declared snapshot RBAC prerequisites**, through the
+[shared monitoring module](infra/monitoring.bicep).
+Its diagnostics and escalation contact arrays are required desired-state inputs;
+pass `@()` explicitly to declare no email actions. No contact parameter is inferred;
+omitted required inputs are rejected.
+Existing-host mode does not update subscription budget recipients; use the
+separate subscription budget deployment path for `-BudgetContactEmails`.
+The Bicep templates own the VM snapshot Reader and Disk Snapshot Contributor
+role assignments; the existing-host what-if allows only those two assignments,
+and the runtime installer validates both before enabling the snapshot timer.
 VM, Key Vault, and storage are existing references; VM-model, NIC, VNet, vault,
 storage, and OpenClaw runtime changes are excluded. Runtime updates use the
 separate guarded application below; private-network cutover remains future work.
 
 ## Apply runtime assets
 
-Create a verified native backup on the host and retain its resulting archive path:
-
-```bash
-install -d -m 0700 "$HOME/backups/pre-update"
-openclaw backup create --output "$HOME/backups/pre-update" --verify
-```
-
-Then use the guarded [runtime application script](scripts/apply-runtime.ps1):
+Create and independently verify a current OS-disk snapshot using the daily snapshot
+workflow, then use the guarded [runtime application script](scripts/apply-runtime.ps1):
 
 ```powershell
 .\scripts\apply-runtime.ps1 `
   -VmHost "<runtime-user>@<verified-host>" `
   -ResourceGroupName "<resource-group>" `
   -VerifiedSnapshotId "<succeeded-current-os-disk-snapshot-resource-id>" `
-  -VerifiedBackupArchive "<absolute-on-host-native-archive-path>" `
-  -KeyVaultName "<vault-name>" -StorageAccountName "<storage-account>"
+  -KeyVaultName "<vault-name>"
 ```
 
-Supply the native archive, not the outer Blob bundle. The script verifies host
-identity, snapshot provenance, and backup evidence before the maintenance-locked
+The script verifies host identity and snapshot provenance before the maintenance-locked
 update. Failures after mutation stay offline; follow
 [operations and rollback](docs/operations.md), not a bare global npm update.
 Use `-UseTailscaleSsh` only after tailnet enrollment and SSH authorization are verified.

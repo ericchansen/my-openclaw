@@ -41,6 +41,11 @@ foreach ($resource in @("Microsoft.Insights/actionGroups/alerts", "Microsoft.Ins
     }
     Assert-Equal @(Get-UnsafeWhatIfChanges @((Change "Delete" $resource)) $true).Count 1 "Destructive monitoring update escaped."
 }
+$snapshotRole = Change "Create" "Microsoft.Authorization/roleAssignments/snapshot"
+$snapshotRole.after = @{properties=@{roleDefinitionId="/subscriptions/test/providers/Microsoft.Authorization/roleDefinitions/7efff54f-a5b4-42b5-a1c5-5411624893ce"}}
+Assert-Equal @(Get-UnsafeWhatIfChanges @($snapshotRole) $true).Count 0 "Declared snapshot RBAC was rejected."
+$snapshotRole.after.properties.roleDefinitionId = "/subscriptions/test/providers/Microsoft.Authorization/roleDefinitions/4633458b-17de-408a-b874-0445c86b69e6"
+Assert-Equal @(Get-UnsafeWhatIfChanges @($snapshotRole) $true).Count 1 "Undeclared existing-host RBAC escaped."
 Assert-Equal @(Get-UnsafeWhatIfChanges @((Change "Create" "Microsoft.Compute/virtualMachines/vm/extensions/Other")) $true).Count 1 "Unrelated VM extension escaped."
 Assert-Equal @(Get-UnsafeWhatIfChanges @(@{changeType="Modify";resourceId="invalid"}) $true).Count 1 "Malformed identity escaped."
 $workspace = Change "Modify" "Microsoft.OperationalInsights/workspaces/log"

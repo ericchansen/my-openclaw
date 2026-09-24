@@ -187,9 +187,16 @@ Invoke-Check "Deployment topology and Bicep" {
                 "Microsoft.Network/networkInterfaces", "Microsoft.Network/virtualNetworks",
                 "Microsoft.Network/networkSecurityGroups", "Microsoft.Network/publicIPAddresses",
                 "Microsoft.Network/natGateways", "Microsoft.Network/privateEndpoints",
-                "Microsoft.KeyVault/vaults", "Microsoft.Storage/storageAccounts", "Microsoft.Authorization/roleAssignments")
+                    "Microsoft.KeyVault/vaults", "Microsoft.Storage/storageAccounts")
             Assert-True (@(Get-TemplateResources $template | Where-Object type -in $forbidden).Count -eq 0) (
                 "Existing-host deployment must not redeploy compute or network resources."
+            )
+            $snapshotRoles = @(Get-TemplateResources $template |
+                Where-Object type -eq "Microsoft.Authorization/roleAssignments")
+            Assert-True ($snapshotRoles.Count -eq 2 -and
+                ($output -join "`n") -match "7efff54f-a5b4-42b5-a1c5-5411624893ce" -and
+                ($output -join "`n") -match "acdd72a7-3385-48ef-bd42-f606fba81ae7") (
+                "Existing-host deployment must declare only the snapshot RBAC prerequisites."
             )
         }
     }

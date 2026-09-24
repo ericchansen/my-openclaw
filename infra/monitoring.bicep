@@ -2,14 +2,13 @@ targetScope = 'resourceGroup'
 
 param location string
 param vmName string = 'openclaw-vm'
-param monitoringContactEmails array = []
-@minValue(80)
-@maxValue(99)
-param cpuSaturationPercent int = 90
+param diagnosticsContactEmails array = []
+param escalationContactEmails array = []
 
 var logAnalyticsName = 'log-openclaw-${uniqueString(resourceGroup().id)}'
 var dataCollectionRuleName = 'dcr-openclaw-${uniqueString(resourceGroup().id)}'
-var alertActionGroupName = 'ag-openclaw-${uniqueString(resourceGroup().id)}'
+var diagnosticsActionGroupName = 'ag-openclaw-diagnostics'
+var escalationActionGroupName = 'ag-openclaw-escalation'
 var contentTableName = 'OpenClawContent_CL'
 
 resource vm 'Microsoft.Compute/virtualMachines@2024-07-01' existing = {
@@ -191,49 +190,53 @@ resource dataCollectionAssociation 'Microsoft.Insights/dataCollectionRuleAssocia
   ]
 }
 
-resource alertActionGroup 'Microsoft.Insights/actionGroups@2023-01-01' = if (!empty(monitoringContactEmails)) {
-  name: alertActionGroupName
+resource diagnosticsActionGroup 'Microsoft.Insights/actionGroups@2023-01-01' = if (!empty(diagnosticsContactEmails)) {
+  name: diagnosticsActionGroupName
   location: 'global'
   properties: {
-    groupShortName: 'openclaw'
+    groupShortName: 'ocdiag'
     enabled: true
-    emailReceivers: [
-      for (email, index) in monitoringContactEmails: {
-        name: 'contact-${index}'
-        emailAddress: email
-        useCommonAlertSchema: true
-      }
-    ]
+    emailReceivers: [for (email, index) in diagnosticsContactEmails: { name: 'diagnostic-${index}', emailAddress: email, useCommonAlertSchema: true }]
   }
 }
 
-var alertActions = empty(monitoringContactEmails) ? { actionGroups: [] } : { actionGroups: [alertActionGroup.id] }
-var metricAlertActions = empty(monitoringContactEmails)
+resource escalationActionGroup 'Microsoft.Insights/actionGroups@2023-01-01' = if (!empty(escalationContactEmails)) {
+  name: escalationActionGroupName
+  location: 'global'
+  properties: {
+    groupShortName: 'ocescal'
+    enabled: true
+    emailReceivers: [for (email, index) in escalationContactEmails: { name: 'escalation-${index}', emailAddress: email, useCommonAlertSchema: true }]
+  }
+}
+
+var diagnosticAlertActions = empty(diagnosticsContactEmails) ? { actionGroups: [] } : { actionGroups: [diagnosticsActionGroup.id] }
+var ownerMetricAlertActions = empty(escalationContactEmails)
   ? []
   : [
       {
-        actionGroupId: alertActionGroup.id
+        actionGroupId: escalationActionGroup.id
       }
     ]
 
-resource diskWarningAlert 'Microsoft.Insights/scheduledQueryRules@2023-12-01' = {
-  name: 'openclaw-disk-75'
+resource diskPressureAlert 'Microsoft.Insights/scheduledQueryRules@2023-12-01' = {
+  name: 'openclaw-disk-pressure'
   kind: 'LogAlert'
   location: location
   properties: {
-    displayName: 'OpenClaw disk usage at or above 75 percent'
-    description: 'Structured runtime health reports disk usage at or above 75 percent.'
+    displayName: 'OpenClaw disk pressure'
+    description: 'The latest runtime probe reports disk usage at or above 85 percent.'
     enabled: true
     severity: 2
     scopes: [
       logAnalytics.id
     ]
     evaluationFrequency: 'PT5M'
-    windowSize: 'PT10M'
+    windowSize: 'PT30M'
     criteria: {
       allOf: [
         {
-          query: 'Syslog | where Facility == "local6" and ProcessName == "openclaw-health" | extend d = parse_json(SyslogMessage) | where toint(d.diskPercent) >= 75'
+          query: 'Syslog | where Facility == "local6" and ProcessName == "openclaw-runtime-health-probe" | extend d = parse_json(SyslogMessage) | where d.event == "runtime_health_probe" | summarize arg_max(TimeGenerated, *) by Computer | where tobool(d.disk.pressure) == true'
           timeAggregation: 'Count'
           operator: 'GreaterThan'
           threshold: 0
@@ -245,106 +248,7 @@ resource diskWarningAlert 'Microsoft.Insights/scheduledQueryRules@2023-12-01' = 
       ]
     }
     autoMitigate: true
-    actions: alertActions
-  }
-}
-
-resource diskHighAlert 'Microsoft.Insights/scheduledQueryRules@2023-12-01' = {
-  name: 'openclaw-disk-85'
-  kind: 'LogAlert'
-  location: location
-  properties: {
-    displayName: 'OpenClaw disk usage at or above 85 percent'
-    description: 'Structured runtime health reports disk usage at or above 85 percent.'
-    enabled: true
-    severity: 1
-    scopes: [
-      logAnalytics.id
-    ]
-    evaluationFrequency: 'PT5M'
-    windowSize: 'PT10M'
-    criteria: {
-      allOf: [
-        {
-          query: 'Syslog | where Facility == "local6" and ProcessName == "openclaw-health" | extend d = parse_json(SyslogMessage) | where toint(d.diskPercent) >= 85'
-          timeAggregation: 'Count'
-          operator: 'GreaterThan'
-          threshold: 0
-          failingPeriods: {
-            numberOfEvaluationPeriods: 1
-            minFailingPeriodsToAlert: 1
-          }
-        }
-      ]
-    }
-    autoMitigate: true
-    actions: alertActions
-  }
-}
-
-resource diskCriticalAlert 'Microsoft.Insights/scheduledQueryRules@2023-12-01' = {
-  name: 'openclaw-disk-92'
-  kind: 'LogAlert'
-  location: location
-  properties: {
-    displayName: 'OpenClaw disk usage at or above 92 percent'
-    description: 'Structured runtime health reports disk usage at or above 92 percent.'
-    enabled: true
-    severity: 0
-    scopes: [
-      logAnalytics.id
-    ]
-    evaluationFrequency: 'PT5M'
-    windowSize: 'PT10M'
-    criteria: {
-      allOf: [
-        {
-          query: 'Syslog | where Facility == "local6" and ProcessName == "openclaw-health" | extend d = parse_json(SyslogMessage) | where toint(d.diskPercent) >= 92'
-          timeAggregation: 'Count'
-          operator: 'GreaterThan'
-          threshold: 0
-          failingPeriods: {
-            numberOfEvaluationPeriods: 1
-            minFailingPeriodsToAlert: 1
-          }
-        }
-      ]
-    }
-    autoMitigate: true
-    actions: alertActions
-  }
-}
-
-resource backupHealthAlert 'Microsoft.Insights/scheduledQueryRules@2023-12-01' = {
-  name: 'openclaw-backup-health'
-  kind: 'LogAlert'
-  location: location
-  properties: {
-    displayName: 'OpenClaw backup failed or is stale'
-    description: 'Structured runtime health reports a failed backup or age over 36 hours.'
-    enabled: true
-    severity: 1
-    scopes: [
-      logAnalytics.id
-    ]
-    evaluationFrequency: 'PT5M'
-    windowSize: 'PT10M'
-    criteria: {
-      allOf: [
-        {
-          query: 'Syslog | where Facility == "local6" and ProcessName == "openclaw-health" | extend d = parse_json(SyslogMessage) | where tobool(d.backupOk) == false or tolong(d.backupAgeSeconds) > 129600'
-          timeAggregation: 'Count'
-          operator: 'GreaterThan'
-          threshold: 0
-          failingPeriods: {
-            numberOfEvaluationPeriods: 1
-            minFailingPeriodsToAlert: 1
-          }
-        }
-      ]
-    }
-    autoMitigate: true
-    actions: alertActions
+    actions: diagnosticAlertActions
   }
 }
 
@@ -353,8 +257,8 @@ resource capacityPressureAlert 'Microsoft.Insights/scheduledQueryRules@2023-12-0
   kind: 'LogAlert'
   location: location
   properties: {
-    displayName: 'OpenClaw guest capacity pressure'
-    description: 'The latest fresh early sample reports memory/swap headroom pressure or CPU/memory PSI stalls; does not wait for application canaries.'
+    displayName: 'OpenClaw host capacity pressure'
+    description: 'The latest runtime probe reports memory or load pressure.'
     enabled: true
     severity: 2
     scopes: [
@@ -365,7 +269,7 @@ resource capacityPressureAlert 'Microsoft.Insights/scheduledQueryRules@2023-12-0
     criteria: {
       allOf: [
         {
-          query: 'Syslog | where Facility == "local6" and ProcessName == "openclaw-health" | extend d = parse_json(SyslogMessage) | where d.event == "capacity" and toint(d.capacitySchemaVersion) == 1 | extend SampledAt = todatetime(d.capacity.sampledAt) | where SampledAt between (ago(20m) .. now()) | summarize arg_max(SampledAt, *) by Computer | where tobool(d.capacity.pressure) == true'
+          query: 'Syslog | where Facility == "local6" and ProcessName == "openclaw-runtime-health-probe" | extend d = parse_json(SyslogMessage) | where d.event == "runtime_health_probe" | summarize arg_max(TimeGenerated, *) by Computer | where tobool(d.capacity.pressure) == true'
           timeAggregation: 'Count'
           operator: 'GreaterThan'
           threshold: 0
@@ -377,17 +281,17 @@ resource capacityPressureAlert 'Microsoft.Insights/scheduledQueryRules@2023-12-0
       ]
     }
     autoMitigate: true
-    actions: alertActions
+    actions: diagnosticAlertActions
   }
 }
 
-resource runtimeHealthAlert 'Microsoft.Insights/scheduledQueryRules@2023-12-01' = {
-  name: 'openclaw-runtime-health'
+resource runtimeHealthProbeAlert 'Microsoft.Insights/scheduledQueryRules@2023-12-01' = {
+  name: 'openclaw-runtime-health-probe-failed'
   kind: 'LogAlert'
   location: location
   properties: {
-    displayName: 'OpenClaw runtime health check failed'
-    description: 'The same actionable failure occurred across separated records and remains present in the latest schema-v2 health record.'
+    displayName: 'OpenClaw runtime health probe unhealthy'
+    description: 'The latest runtime probe reports an unhealthy Gateway or host-capacity state.'
     enabled: true
     severity: 1
     scopes: [
@@ -398,7 +302,7 @@ resource runtimeHealthAlert 'Microsoft.Insights/scheduledQueryRules@2023-12-01' 
     criteria: {
       allOf: [
         {
-          query: 'let Health = Syslog | where Facility == "local6" and ProcessName == "openclaw-health" | extend d = parse_json(SyslogMessage) | where toint(d.schemaVersion) >= 2 | project TimeGenerated, Failures = todynamic(d.actionableFailures); let LatestHealth = toscalar(Health | summarize max(TimeGenerated)); Health | mv-expand Failure = Failures | extend Failure = tostring(Failure) | where isnotempty(Failure) | summarize FailureSamples = count(), FirstFailure = min(TimeGenerated), LastFailure = max(TimeGenerated) by Failure | where FailureSamples >= 2 and LastFailure - FirstFailure >= 10m and LastFailure == LatestHealth'
+          query: 'Syslog | where Facility == "local6" and ProcessName == "openclaw-runtime-health-probe" | extend d = parse_json(SyslogMessage) | where d.event == "runtime_health_probe" | summarize arg_max(TimeGenerated, *) by Computer | where tobool(d.probeOk) == false'
           timeAggregation: 'Count'
           operator: 'GreaterThan'
           threshold: 0
@@ -410,17 +314,17 @@ resource runtimeHealthAlert 'Microsoft.Insights/scheduledQueryRules@2023-12-01' 
       ]
     }
     autoMitigate: true
-    actions: alertActions
+    actions: diagnosticAlertActions
   }
 }
 
 resource missingHealthAlert 'Microsoft.Insights/scheduledQueryRules@2023-12-01' = {
-  name: 'openclaw-health-missing'
+  name: 'openclaw-runtime-health-probe-missing'
   kind: 'LogAlert'
   location: location
   properties: {
-    displayName: 'OpenClaw runtime health records missing'
-    description: 'No complete schema-v2 OpenClaw health record has arrived for 50 minutes.'
+    displayName: 'OpenClaw runtime health probe missing'
+    description: 'No runtime health probe record has arrived for 50 minutes.'
     enabled: true
     severity: 1
     scopes: [
@@ -431,8 +335,9 @@ resource missingHealthAlert 'Microsoft.Insights/scheduledQueryRules@2023-12-01' 
     criteria: {
       allOf: [
         {
-          query: 'print LastHealth=toscalar(Syslog | where Facility == "local6" and ProcessName == "openclaw-health" | extend d = parse_json(SyslogMessage) | where toint(d.schemaVersion) >= 2 | summarize max(TimeGenerated)) | where isnull(LastHealth) or LastHealth < ago(50m)'
-          timeAggregation: 'Count'
+          query: 'let LastProbe=toscalar(Syslog | where Facility == "local6" and ProcessName == "openclaw-runtime-health-probe" | extend d = parse_json(SyslogMessage) | where d.event == "runtime_health_probe" | summarize max(TimeGenerated)); print Missing=toint(iif(isnull(LastProbe) or LastProbe < ago(50m), 1, 0))'
+          timeAggregation: 'Maximum'
+          metricMeasureColumn: 'Missing'
           operator: 'GreaterThan'
           threshold: 0
           failingPeriods: {
@@ -443,41 +348,7 @@ resource missingHealthAlert 'Microsoft.Insights/scheduledQueryRules@2023-12-01' 
       ]
     }
     autoMitigate: true
-    actions: alertActions
-  }
-}
-
-resource cpuSaturationAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
-  name: 'openclaw-cpu-saturation'
-  location: 'global'
-  properties: {
-    description: 'Sustained platform CPU saturation, even when guest health logs and VM Agent stop responding.'
-    severity: 1
-    enabled: true
-    scopes: [
-      vm.id
-    ]
-    evaluationFrequency: 'PT1M'
-    windowSize: 'PT15M'
-    criteria: {
-      'odata.type': 'Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria'
-      allOf: [
-        {
-          name: 'CpuSaturation'
-          metricNamespace: 'Microsoft.Compute/virtualMachines'
-          metricName: 'Percentage CPU'
-          operator: 'GreaterThanOrEqual'
-          timeAggregation: 'Average'
-          criterionType: 'StaticThresholdCriterion'
-          threshold: cpuSaturationPercent
-          skipMetricValidation: false
-        }
-      ]
-    }
-    autoMitigate: true
-    targetResourceType: 'Microsoft.Compute/virtualMachines'
-    targetResourceRegion: location
-    actions: metricAlertActions
+    actions: diagnosticAlertActions
   }
 }
 
@@ -485,7 +356,7 @@ resource vmAvailabilityAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
   name: 'openclaw-vm-availability'
   location: 'global'
   properties: {
-    description: 'Azure VM availability metric is below healthy.'
+    description: 'Azure reports the VM unavailable for the five-minute evaluation window.'
     severity: 0
     enabled: true
     scopes: [
@@ -501,7 +372,7 @@ resource vmAvailabilityAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
           metricNamespace: 'Microsoft.Compute/virtualMachines'
           metricName: 'VmAvailabilityMetric'
           operator: 'LessThan'
-          timeAggregation: 'Average'
+          timeAggregation: 'Maximum'
           criterionType: 'StaticThresholdCriterion'
           threshold: 1
           skipMetricValidation: false
@@ -511,7 +382,7 @@ resource vmAvailabilityAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
     autoMitigate: true
     targetResourceType: 'Microsoft.Compute/virtualMachines'
     targetResourceRegion: location
-    actions: metricAlertActions
+    actions: ownerMetricAlertActions
   }
 }
 
