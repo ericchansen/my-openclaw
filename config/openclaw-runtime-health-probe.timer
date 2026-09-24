@@ -1,5 +1,5 @@
 [Unit]
-Description=Periodic OpenClaw runtime health checks
+Description=OpenClaw runtime health probe every fifteen minutes
 
 [Timer]
 OnBootSec=5m
@@ -7,7 +7,7 @@ OnCalendar=*:0/15
 Persistent=true
 AccuracySec=30s
 RandomizedDelaySec=30s
-Unit=openclaw-health.service
+Unit=openclaw-runtime-health-probe.service
 
 [Install]
 WantedBy=timers.target

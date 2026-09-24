@@ -6,7 +6,9 @@ param(
     [string]$DeployerPrincipalId = "",
     [ValidateSet("User", "ServicePrincipal")]
     [string]$DeployerPrincipalType = "User",
-    [string[]]$MonitoringContactEmails = @(),
+    [string[]]$BudgetContactEmails = @(),
+    [string[]]$DiagnosticsContactEmails = @(),
+    [string[]]$EscalationContactEmails = @(),
     [ValidatePattern('^(latest|[0-9]+\.[0-9]+\.[0-9]+)$')]
     [string]$UbuntuImageVersion = "24.04.202607140",
     [string]$VerifiedSnapshotId = "",
@@ -59,6 +61,13 @@ function Get-UnsafeWhatIfChanges {
         if ($change.changeType -notin @("Create", "Modify")) {
             "Unsupported/destructive what-if action: $($change.changeType) $type"
         }
+        elseif ($ExistingHost -and $type -eq "Microsoft.Authorization/roleAssignments") {
+            $roleDefinitionId = [string]$change.after.properties.roleDefinitionId
+            if ($change.changeType -ne "Create" -or
+                $roleDefinitionId -notmatch '(?i)/providers/Microsoft\.Authorization/roleDefinitions/(7efff54f-a5b4-42b5-a1c5-5411624893ce|acdd72a7-3385-48ef-bd42-f606fba81ae7)$') {
+                "Existing-host deployment may only create the declared snapshot RBAC roles"
+            }
+        }
         elseif (($ExistingHost -or $change.changeType -eq "Modify") -and $type -notin $monitorTypes) {
             "Protected resource change: $($change.changeType) $type"
         }
@@ -108,24 +117,18 @@ if ($SkipCustomData -and -not $existingVm) { throw "-SkipCustomData requires an 
 if ($existingVm) {
     Assert-SnapshotMatchesDisk $VerifiedSnapshotId $existingVm.storageProfile.osDisk.managedDisk.id
     if ($DeployerPrincipalId) { throw "Existing-host mode does not change Key Vault or subscription permissions." }
+    if ($PSBoundParameters.ContainsKey("BudgetContactEmails")) {
+        throw "Existing-host mode does not update subscription budget contacts; use the separate subscription budget deployment path."
+    }
     $Location = $existingVm.location
-    if (-not $PSBoundParameters.ContainsKey("MonitoringContactEmails")) {
-        $groups = @(Invoke-Az @("monitor", "action-group", "list", "-g", $ResourceGroupName, "--output", "json") -Json |
-            Where-Object name -like "ag-openclaw-*")
-        if ($groups.Count -gt 1) { throw "Ambiguous OpenClaw action group; provide reviewed monitoring contacts explicitly." }
-        if ($groups.Count -eq 1) {
-            $group = $groups[0]
-            $otherReceivers = @($group.PSObject.Properties | Where-Object {
-                $_.Name -like "*Receivers" -and $_.Name -ne "emailReceivers" -and @($_.Value).Count -gt 0
-            })
-            if ($otherReceivers.Count -or -not $group.enabled) {
-                throw "Existing notification policy requires explicit review; it will not be replaced implicitly."
-            }
-            $MonitoringContactEmails = @($group.emailReceivers | ForEach-Object emailAddress)
+    foreach ($parameter in "DiagnosticsContactEmails", "EscalationContactEmails") {
+        if (-not $PSBoundParameters.ContainsKey($parameter)) {
+            throw "Existing-host monitoring is declarative; provide -$parameter explicitly, including @() for no email actions."
         }
     }
     $templateName = "main-existing.bicep"
-    $values = @{location=$Location; monitoringContactEmails=$MonitoringContactEmails}
+    $values = @{location=$Location; diagnosticsContactEmails=$DiagnosticsContactEmails;
+        escalationContactEmails=$EscalationContactEmails}
 }
 else {
     if (-not $SshPublicKeyPath -or -not (Test-Path -LiteralPath $SshPublicKeyPath -PathType Leaf)) {
@@ -150,10 +153,10 @@ else {
     $values = @{
         location=$Location; sshPublicKey=$sshKey; ubuntuImageVersion=$UbuntuImageVersion
         deployerPrincipalId=$DeployerPrincipalId.Trim(); deployerPrincipalType=$DeployerPrincipalType
-        monitoringContactEmails=$MonitoringContactEmails
+        diagnosticsContactEmails=$DiagnosticsContactEmails; escalationContactEmails=$EscalationContactEmails
     }
 }
-foreach ($email in $MonitoringContactEmails) {
+foreach ($email in @($BudgetContactEmails) + @($DiagnosticsContactEmails) + @($EscalationContactEmails)) {
     try { $parsed = [System.Net.Mail.MailAddress]::new($email) }
     catch { throw "Invalid monitoring contact email." }
     if ($parsed.Address -ne $email) { throw "Use plain monitoring email addresses without display names." }
@@ -185,7 +188,7 @@ try {
     }
     $result = Invoke-Az (@("deployment", "group", "create") + $groupArgs + @("-o", "json")) -Json
     if ($existingVm) {
-        Write-Host "Monitoring updated. VM, networking, data stores and runtime were preserved."
+        Write-Host "Monitoring and snapshot prerequisites updated. VM, networking, data stores and runtime were preserved."
     }
     else {
         $budgets = @(Invoke-Az @("consumption", "budget", "list", "--subscription", $SubscriptionId, "-o", "json") -Json)
@@ -193,7 +196,7 @@ try {
         $start = if ($budget) { $budget.timePeriod.startDate } else { (Get-Date -Day 1).ToUniversalTime().ToString("yyyy-MM-01T00:00:00Z") }
         $subParameters = Join-Path $temp "subscription.json"
         Write-Parameters @{vmPrincipalId=$result.properties.outputs.vmPrincipalId.value; budgetStartDate=$start;
-            contactEmails=$MonitoringContactEmails} $subParameters
+            contactEmails=$BudgetContactEmails} $subParameters
         $subArgs = @("--subscription", $SubscriptionId, "--location", $Location, "--template-file",
             (Join-Path $PSScriptRoot "infra\main-subscription.bicep"), "--parameters", "@$subParameters")
         Invoke-Az (@("deployment", "sub", "validate") + $subArgs + @("-o", "none")) | Out-Null
@@ -202,6 +205,6 @@ try {
         Invoke-Az (@("deployment", "sub", "create") + $subArgs + @("-o", "none")) | Out-Null
         Write-Host "New VM deployed. Complete onboarding without copying a template over live channel configuration."
     }
-    Write-Host "Use scripts\apply-runtime.ps1 for snapshot- and backup-guarded existing-host runtime updates."
+    Write-Host "Use scripts\apply-runtime.ps1 for snapshot-guarded existing-host runtime updates."
 }
 finally { Remove-Item -LiteralPath $temp -Recurse -Force }

@@ -22,10 +22,27 @@ class ServiceBudgetTests(unittest.TestCase):
         self.assertEqual(unit["TasksMax"], "1024")
         self.assertEqual(unit["RestartPreventExitStatus"], "78")
 
+    def test_snapshot_timer_is_daily_utc_with_fixed_jitter(self):
+        parser = configparser.ConfigParser(interpolation=None, strict=False)
+        parser.read(ROOT / "config" / "openclaw-vm-snapshot.timer")
+        self.assertEqual(parser["Timer"]["OnCalendar"], "*-*-* 05:30:00 UTC")
+        self.assertEqual(parser["Timer"]["RandomizedDelaySec"], "15m")
+        self.assertEqual(parser["Timer"]["FixedRandomDelay"], "true")
+        self.assertEqual(parser["Timer"]["Unit"], "openclaw-vm-snapshot.service")
+
+    def test_runtime_probe_has_a_fast_bounded_schedule(self):
+        probe = configparser.ConfigParser(interpolation=None, strict=False)
+        probe.read(ROOT / "config" / "openclaw-runtime-health-probe.timer")
+        self.assertEqual(probe["Timer"]["OnCalendar"], "*:0/15")
+        self.assertEqual(
+            probe["Timer"]["Unit"], "openclaw-runtime-health-probe.service")
+        self.assertEqual(
+            self.unit("openclaw-runtime-health-probe.service")["TimeoutStartSec"], "15s")
+
     def test_background_services_have_explicit_smaller_budgets(self):
         for name, maximum in (
-            ("openclaw-health.service", "2G"),
-            ("openclaw-backup.service", "2G"),
+            ("openclaw-runtime-health-probe.service", "256M"),
+            ("openclaw-vm-snapshot.service", "512M"),
             ("openclaw-otel-collector.service", "512M"),
         ):
             with self.subTest(unit=name):
@@ -48,6 +65,8 @@ class ServiceBudgetTests(unittest.TestCase):
                 self.assertTrue(config["plugins"]["entries"]["memory-core"]["config"]["dreaming"]["enabled"])
                 for agent in ("main", "orchestrator"):
                     self.assertEqual(config["agents"]["entries"][agent]["sandbox"]["scope"], "agent")
+                self.assertNotIn("heartbeat", config["agents"]["defaults"])
+                self.assertNotIn("heartbeat", config["agents"]["entries"]["healthcheck"])
 
     def test_managed_mcp_catalog_does_not_inherit_tiny_listing_timeout(self):
         for name in ("openclaw.template.json", "openclaw-mcp-timeouts.patch.json"):

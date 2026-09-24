@@ -1,0 +1,12 @@
+[Unit]
+Description=Daily OpenClaw VM OS-disk snapshot
+
+[Timer]
+OnCalendar=*-*-* 05:30:00 UTC
+Persistent=true
+RandomizedDelaySec=15m
+FixedRandomDelay=true
+Unit=openclaw-vm-snapshot.service
+
+[Install]
+WantedBy=timers.target

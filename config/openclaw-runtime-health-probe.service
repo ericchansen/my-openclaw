@@ -1,5 +1,5 @@
 [Unit]
-Description=Run bounded OpenClaw runtime health checks
+Description=Run the OpenClaw runtime health probe
 After=network-online.target
 Wants=network-online.target
 
@@ -9,15 +9,15 @@ User=__OPENCLAW_USER__
 Environment=HOME=/home/__OPENCLAW_USER__
 EnvironmentFile=/etc/openclaw/runtime.env
 WorkingDirectory=/home/__OPENCLAW_USER__
-ExecStart=/usr/local/sbin/openclaw-health-check
-RuntimeDirectory=openclaw-health
+ExecStart=/usr/local/sbin/openclaw-runtime-health-probe
+RuntimeDirectory=openclaw-runtime-health-probe
 RuntimeDirectoryMode=0700
 UMask=0077
 NoNewPrivileges=true
-MemoryHigh=1G
-MemoryMax=2G
-MemorySwapMax=128M
+MemoryHigh=128M
+MemoryMax=256M
+MemorySwapMax=64M
 CPUWeight=20
 IOWeight=20
 Nice=10
-TimeoutStartSec=9m
+TimeoutStartSec=15s

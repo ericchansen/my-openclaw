@@ -8,7 +8,6 @@ fi
 umask 077
 
 target_version=
-verified_backup=
 snapshot_evidence=
 openclaw_user=azureuser
 copilot_version=
@@ -32,7 +31,6 @@ sandbox_provisioner=/usr/local/sbin/openclaw-provision-sandbox-images
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --target-version) target_version="$2"; shift 2 ;;
-    --verified-backup) verified_backup="$2"; shift 2 ;;
     --snapshot-evidence) snapshot_evidence="$2"; shift 2 ;;
     --user) openclaw_user="$2"; shift 2 ;;
     --copilot-version) copilot_version="$2"; shift 2 ;;
@@ -66,10 +64,6 @@ snapshot_evidence_lower="${snapshot_evidence,,}"
 [[ "$snapshot_evidence_lower" =~ ^/subscriptions/[^/]+/resourcegroups/[^/]+/providers/microsoft\.compute/snapshots/[^/]+$ ]] || {
   printf 'Caller-verified --snapshot-evidence is required.\n' >&2
   exit 64
-}
-[[ -f "$verified_backup" && ! -L "$verified_backup" ]] || {
-  printf 'Verified backup archive is missing or unsafe: %s\n' "$verified_backup" >&2
-  exit 66
 }
 for value in \
   "$diagnostics_otel_version" "$copilot_version" "$mcp_ebird_version" "$mcp_pondlog_version" \
@@ -230,13 +224,6 @@ chmod 0700 "$artifact_dir"
 printf '%s\n' "$snapshot_evidence" > "$artifact_dir/snapshot-evidence.txt"
 chmod 0600 "$artifact_dir/snapshot-evidence.txt"
 
-run_as_openclaw timeout --signal=TERM --kill-after=5s 300s \
-  openclaw backup verify "$verified_backup" \
-  >"$artifact_dir/backup-verify.log" 2>&1 || {
-    printf 'Backup verification failed; no package was changed. Evidence: %s\n' "$artifact_dir" >&2
-    exit 78
-  }
-
 verify_registry_pin() {
   local package="$1" version="$2" integrity="$3" actual
   actual="$(timeout --signal=TERM --kill-after=5s 60s \
@@ -359,14 +346,14 @@ trap leave_stopped_on_failure EXIT
 
 # Stop only our timers. Existing lockless service executions (from an older
 # installation) must finish naturally before any runtime file is replaced.
-for timer in openclaw-backup.timer openclaw-health.timer; do
+for timer in openclaw-runtime-health-probe.timer openclaw-vm-snapshot.timer; do
   if systemctl is-active --quiet "$timer"; then
     paused_timers+=("$timer")
     systemctl stop "$timer"
   fi
 done
 deadline=$((SECONDS + drain_timeout))
-for service in openclaw-backup.service openclaw-health.service; do
+for service in openclaw-runtime-health-probe.service openclaw-vm-snapshot.service; do
   while :; do
     state="$(systemctl show "$service" --property=ActiveState --value)"
     case "$state" in
@@ -375,7 +362,7 @@ for service in openclaw-backup.service openclaw-health.service; do
       *) printf 'Unrecognized maintenance service state for %s.\n' "$service" >&2; exit 78 ;;
     esac
     (( SECONDS < deadline )) || {
-      printf 'Existing backup/health work did not drain; runtime was not changed.\n' >&2
+      printf 'Existing snapshot/probe work did not drain; runtime was not changed.\n' >&2
       exit 75
     }
     sleep 2
@@ -581,7 +568,7 @@ flock --unlock 8
 exec 8<&-
 unset OPENCLAW_MAINTENANCE_LOCK_HELD
 if [[ -n "$runtime_installer" ]]; then
-  systemctl start openclaw-backup.timer openclaw-health.timer
+  systemctl start openclaw-runtime-health-probe.timer openclaw-vm-snapshot.timer
   paused_timers=()
 else
   restore_timers
