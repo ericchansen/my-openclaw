@@ -183,6 +183,9 @@ Invoke-Check "Deployment topology and Bicep" {
         Assert-True ($LASTEXITCODE -eq 0 -and ($output -join "`n") -notmatch '\bBCP\d+\b') "$name failed Bicep compilation."
         if ($name -eq "main-existing") {
             $template = ($output -join "`n") | ConvertFrom-Json -Depth 100
+            Assert-True (($output -join "`n") -notmatch "OpenClawContent_CL|Custom-OpenClawContent_CL|openclaw-sanitized-otel") (
+                "Existing-host monitoring must not ingest local OpenTelemetry JSONL into Log Analytics."
+            )
             $forbidden = @("Microsoft.Compute/virtualMachines", "Microsoft.Compute/disks",
                 "Microsoft.Network/networkInterfaces", "Microsoft.Network/virtualNetworks",
                 "Microsoft.Network/networkSecurityGroups", "Microsoft.Network/publicIPAddresses",
