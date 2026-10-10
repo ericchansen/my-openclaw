@@ -1,7 +1,7 @@
 # GPT-6 Astra through the official Copilot harness
 
 Astra is available. The interactive default is GPT-5.6 Sol Fast extra-high with
-Claude Opus 5 extra-high fallback because running Astra as the main agent through
+Claude Sonnet 5 fallback because running Astra as the main agent through
 `agentRuntime: {"id": "copilot"}` injected Copilot-harness instructions the model
 would not name. That opacity showed up as vague "execution constraints" /
 "assistant-side rules" and blocked authorized maintenance.

@@ -17,6 +17,43 @@ OFFICIAL_PLUGIN_PACKAGES = {
 
 
 class CopilotHarnessPolicyTests(unittest.TestCase):
+    def test_blocked_copilot_models_are_absent_from_active_desired_state(self):
+        """Active config, docs, fixtures, and deployment assets must not revive blocked IDs.
+
+        Git history is intentionally archival and is not scanned by this guard. Any future
+        archival reference must live outside the active repository artifacts or be classified
+        explicitly in a separately reviewed test fixture.
+        """
+        blocked = (
+            "github-copilot/claude-opus-" + "4.6",
+            "github-copilot/claude-opus-" + "4.8",
+            "github-copilot/claude-opus-" + "5",
+            "github-copilot/claude-sonnet-" + "4.6",
+        )
+        active_paths = (
+            ROOT / ".github",
+            ROOT / "README.md",
+            ROOT / "azure.yaml",
+            ROOT / "config",
+            ROOT / "deploy.ps1",
+            ROOT / "docs",
+            ROOT / "infra",
+            ROOT / "migrate.ps1",
+            ROOT / "scripts",
+            ROOT / "tests",
+            ROOT / "workspace",
+        )
+        for active_path in active_paths:
+            paths = (active_path,) if active_path.is_file() else active_path.rglob("*")
+            for path in paths:
+                if not path.is_file():
+                    continue
+                try:
+                    text = path.read_text(errors="strict")
+                except UnicodeDecodeError:
+                    continue
+                self.assertFalse(any(model in text for model in blocked), path)
+
     def fixture(self, plugin_id="copilot", phase="preflight"):
         name = f"install-policy-allow-diagnostics-{phase}.json"
         data = json.loads((ROOT / "tests" / "fixtures" / name).read_text())

@@ -138,8 +138,8 @@ System-scope Gateway units cannot use OpenClaw managed `update.run` handoff.
 Authorized runtime updates use `sudo /usr/local/sbin/openclaw-update` after
 backup and snapshot evidence. Do not migrate to a user-scope unit or treat a
 missing `gateway` tool as a host-access denial. The interactive default is
-GPT-5.6 Sol Fast extra-high with Claude Opus 5 extra-high fallback. Astra remains
-available. Copilot-harness private prompts are not operator policy.
+GPT-5.6 Sol Fast extra-high with Claude Sonnet 5 fallback. Astra remains available.
+Copilot-harness private prompts are not operator policy.
 
 ## Host, Azure, and telemetry risks
 
