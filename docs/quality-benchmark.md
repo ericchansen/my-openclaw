@@ -49,10 +49,10 @@ Run the same suite with:
 
 | Candidate | Thinking/effort |
 |---|---|
-| Claude Opus 4.6 | off |
-| Claude Opus 4.8 | off |
 | Claude Sonnet 5 | high |
 | GPT-5.6 Sol | high |
+| GPT-5.6 Sol Fast | high |
+| GPT-5.6 Luna | low |
 
 Provider vocabularies differ. Confirm authentication, model IDs, entitlement, and the reasoning levels exposed by the installed transport before a run. A catalog entry is not proof of availability.
 
@@ -86,4 +86,4 @@ Canary in a private direct session, then one low-risk workflow, before broad rol
 
 The private 2026-07 challenge run found both `github-copilot/claude-sonnet-5` and `github-copilot/gpt-5.6-sol` with high reasoning passed the final bounded two-child orchestration case; Sonnet initially won the latency tie-break. On 2026-07-17, the user selected Sol as the consistent interactive control plane and preferred quality over that latency difference. That record is history, not a ban on later catalog models.
 
-The current interactive default is GPT-5.6 Sol Fast extra-high with Claude Opus 5 extra-high fallback. Astra remains available. Agents choose per task. Luna/low is still a reasonable economy for bounded low-risk background work. Live canaries in 2026-07 confirmed default Sol/high resolution, direct Luna/low execution, and a native parent-to-default-Luna child handoff.
+The current interactive default is GPT-5.6 Sol Fast extra-high with Claude Sonnet 5 fallback. Astra remains available. Agents choose per task. Luna/low is still a reasonable economy for bounded low-risk background work. Live canaries in 2026-07 confirmed default Sol/high resolution, direct Luna/low execution, and a native parent-to-default-Luna child handoff.

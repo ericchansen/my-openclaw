@@ -86,32 +86,17 @@
       "model": {
         "primary": "github-copilot/gpt-5.6-sol-fast",
         "fallbacks": [
-          "github-copilot/claude-opus-5"
+          "github-copilot/claude-sonnet-5"
         ]
       },
       "thinkingDefault": "xhigh",
       "utilityModel": "github-copilot/gpt-5.6-luna",
       "models": {
-        "github-copilot/claude-opus-4.6": {
-          "alias": "previous-primary-opus"
-        },
-        "github-copilot/claude-sonnet-4.6": {
-          "alias": "fallback-sonnet"
-        },
         "github-copilot/gemini-2.5-pro": {
           "alias": "fallback-gemini"
         },
-        "github-copilot/claude-opus-4.8": {
-          "alias": "benchmark-opus-4-8"
-        },
         "github-copilot/gpt-5.6-sol-fast": {
           "alias": "primary-sol-fast",
-          "params": {
-            "thinking": "xhigh"
-          }
-        },
-        "github-copilot/claude-opus-5": {
-          "alias": "fallback-opus-5",
           "params": {
             "thinking": "xhigh"
           }
