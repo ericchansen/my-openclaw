@@ -15,10 +15,6 @@
       "payload": {
         "kind": "agentTurn",
         "message": "fixture content must be removed",
-        "model": "github-copilot/gpt-5.6-sol",
-        "fallbacks": [
-          "github-copilot/claude-sonnet-5"
-        ],
         "thinking": "high",
         "timeoutSeconds": 900,
         "lightContext": true

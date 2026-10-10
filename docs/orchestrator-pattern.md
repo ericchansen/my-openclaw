@@ -37,8 +37,7 @@ The template uses:
 
 - parent concurrency: 4;
 - parent model default: GPT-6.1 Sol, extra-high thinking;
-- low-risk child default: GPT-5.6 Luna, low thinking;
-- Astra and other catalog models remain available;
+- children inherit the native Sol 6.1 model default, with no model override or fallback;
 - delegation mode: prefer;
 - child concurrency: 4;
 - maximum spawn depth: 2;
@@ -47,7 +46,7 @@ The template uses:
 
 These are upper bounds, not targets. A single parent often needs zero or one child. Avoid fan-out where the merge cost exceeds the parallel gain.
 
-The parent keeps the user conversation, scope decisions, integration, and final verification. Luna/low is a reasonable economy for bounded low-risk work. Pick a model and thinking level per lane: Sol 6.1 extra-high is the current default for development, research, synthesis, and sensitive decisions; Astra is fine for coding orchestration; Luna/low fits mechanical extraction, formatting, or deterministic tool work.
+The parent keeps the user conversation, scope decisions, integration, and final verification. Every lane inherits Sol 6.1; choose bounded work and thinking effort, not a separate model route.
 
 ## Repository Lane
 

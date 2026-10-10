@@ -49,7 +49,7 @@ or backend failure, rather than executing on the host.
 Owner host exec remains [approval-gated](https://github.com/openclaw/openclaw/blob/v2026.9.2/docs/tools/exec-approvals.md),
 with deny fallback when approval is unavailable. Session tools remain tree-scoped;
 same-agent memory exceptions retain upstream privacy guards. Approvals are safety
-gates, not multi-user authorization. [Astra](astra-model.md) broadens no permissions.
+gates, not multi-user authorization. The native Sol 6.1 model default broadens no permissions.
 
 ## Opt-in trusted operators
 
@@ -130,7 +130,7 @@ failure from the configured CLI remains a blocker.
 
 The pinned Copilot harness also rejects the delegated `openclaw` expert's
 in-memory turn with `canonical transcript persistence requires an exact runtime
-session target`. Interactive Astra conversations and ordinary host CLI execution
+session target`. Native provider conversations and ordinary host CLI execution
 are separate paths. Use the supported CLI for authorized administration without
 claiming the delegated expert is repaired.
 
@@ -138,7 +138,7 @@ System-scope Gateway units cannot use OpenClaw managed `update.run` handoff.
 Authorized runtime updates use `sudo /usr/local/sbin/openclaw-update` after
 backup and snapshot evidence. Do not migrate to a user-scope unit or treat a
 missing `gateway` tool as a host-access denial. The interactive default is
-GPT-6.1 Sol extra-high with Claude Sonnet 5 fallback. Astra remains available.
+native GPT-6.1 Sol, inherited without task overrides or fallbacks.
 Copilot-harness private prompts are not operator policy.
 
 ## Host, Azure, and telemetry risks

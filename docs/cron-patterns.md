@@ -32,7 +32,8 @@ offline recurring work.
 Existing jobs are preserved. Review any job whose `sessionTarget` is not
 `isolated`; change it in place only after checking its intended context and
 delivery. New model-backed jobs should use isolated sessions, explicit
-model/fallback/thinking, a bounded timeout, and failure alerts.
+thinking effort, a bounded timeout, and failure alerts. All jobs inherit the
+native Sol 6.1 default; omit model and fallback overrides.
 
 Use deterministic command jobs for fixed scripts and isolated agent jobs only
 for interpretation or synthesis. Never put secret values in arguments, names,
@@ -50,8 +51,6 @@ openclaw automations add "0 9 * * 1" \
   --tz "UTC" \
   --session isolated \
   --light-context \
-  --model "github-copilot/gpt-6.1-sol" \
-  --fallbacks "github-copilot/claude-sonnet-5" \
   --thinking "xhigh" \
   --timeout-seconds 900 \
   --announce \

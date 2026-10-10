@@ -20,78 +20,66 @@ OFFICIAL_PLUGIN_PACKAGES = {
 
 
 class CopilotHarnessPolicyTests(unittest.TestCase):
-    def test_blocked_copilot_models_are_absent_from_active_desired_state(self):
-        """Active config, docs, fixtures, and deployment assets must not revive blocked IDs.
+    def test_native_sol_default_and_inheritance(self):
+        sol = "github-copilot/gpt-6.1-sol"
+        for name in ("openclaw.template.json", "openclaw-quality.patch.json"):
+            config = json.loads((ROOT / "config" / name).read_text())
+            defaults = config["agents"]["defaults"]
+            self.assertEqual(defaults["model"], sol)
+            self.assertEqual(defaults["utilityModel"], "")
+            self.assertEqual(defaults["modelPolicy"], {"allow": [sol]})
+            self.assertNotIn("models", defaults)
+            self.assertEqual(defaults["thinkingDefault"], "xhigh")
 
-        Git history is intentionally archival and is not scanned by this guard. Any future
-        archival reference must live outside the active repository artifacts or be classified
-        explicitly in a separately reviewed test fixture.
-        """
-        blocked = (
-            "github-copilot/claude-opus-" + "4.6",
-            "github-copilot/claude-opus-" + "4.8",
-            "github-copilot/claude-opus-" + "5",
-            "github-copilot/claude-sonnet-" + "4.6",
-        )
+            def check(value, path=()):
+                if isinstance(value, dict):
+                    for key, item in value.items():
+                        at = path + (key,)
+                        self.assertNotIn(key, ("fallbacks", "modelFallback"), at)
+                        if key == "model":
+                            if at == ("agents", "defaults", "model"):
+                                self.assertEqual(item, sol)
+                            else:
+                                self.assertEqual(at, ("memory", "search", "model"))
+                                self.assertEqual(item, "text-embedding-3-small")
+                        elif key == "allowedModels":
+                            self.assertEqual(item, [sol], at)
+                        elif key == "utilityModel":
+                            self.assertEqual(at, ("agents", "defaults", "utilityModel"))
+                            self.assertEqual(item, "")
+                        check(item, at)
+                elif isinstance(value, list):
+                    for item in value:
+                        check(item, path)
+            check(config)
+            encoder = config["memory"]["search"]
+            self.assertEqual(encoder["provider"], "github-copilot")
+            self.assertTrue(encoder["store"]["vector"]["enabled"])
+            for plugin in ("active-memory", "memory-core"):
+                self.assertEqual(config["plugins"]["entries"][plugin]["subagent"]["allowedModels"], [sol])
+        fixture = json.loads((ROOT / "tests/fixtures/openclaw-2026.9.1-automations-list.json").read_text())
+        for job in fixture["jobs"]:
+            self.assertNotIn("model", job["payload"])
+            self.assertNotIn("fallbacks", job["payload"])
+
+    def test_active_files_and_decoded_assets_use_only_sol_task_refs(self):
+        import re
+        sol = b"github-copilot/gpt-6.1-sol"
+        # Native provider refs are task models; encoder names are not provider refs.
+        pattern = rb"github-copilot/[a-zA-Z0-9_.-]+"
         tracked = subprocess.run(
             ["git", "ls-files", "-z"], cwd=ROOT, check=True, capture_output=True,
         ).stdout.decode().split("\0")
         for relative in filter(None, tracked):
             path = ROOT / relative
-            self.assertFalse(any(model.encode() in path.read_bytes() for model in blocked), path)
-
-        # Scan the payload, not only the encoded deployment asset.
-        bundle = ROOT / "infra/runtime-assets.tar.xz.b64"
-        compressed = base64.b64decode(bundle.read_bytes(), validate=True)
+            if path.is_file():
+                self.assertTrue(all(ref == sol for ref in re.findall(pattern, path.read_bytes())), relative)
+        compressed = base64.b64decode((ROOT / "infra/runtime-assets.tar.xz.b64").read_bytes(), validate=True)
         with tarfile.open(fileobj=io.BytesIO(compressed), mode="r:xz") as archive:
             for member in archive:
                 if member.isfile():
-                    payload = archive.extractfile(member).read()
-                    self.assertFalse(any(model.encode() in payload for model in blocked), member.name)
-
-    def test_interactive_default_is_sol_6_1_with_sonnet_fallback_and_policy_allow(self):
-        retained_models = {
-            "github-copilot/gemini-2.5-pro",
-            "github-copilot/gpt-5.6-sol-fast",
-            "github-copilot/gpt-6-astra",
-            "github-copilot/gpt-5.6-sol",
-            "github-copilot/claude-sonnet-5",
-            "github-copilot/gpt-5.6-luna",
-            "github-copilot/gpt-6.1-sol",
-        }
-        checked = []
-        for path in sorted((ROOT / "config").glob("openclaw*.json")):
-            data = json.loads(path.read_text())
-            defaults = data.get("agents", {}).get("defaults", {})
-            if "model" not in defaults:
-                continue
-            self.assertEqual(defaults["model"]["primary"], "github-copilot/gpt-6.1-sol", path)
-            self.assertEqual(defaults["model"]["fallbacks"], ["github-copilot/claude-sonnet-5"], path)
-            self.assertEqual(defaults["models"]["github-copilot/gpt-6.1-sol"], {
-                "alias": "primary-sol-6-1", "params": {"thinking": "xhigh"}})
-            self.assertEqual(set(defaults["modelPolicy"]["allow"]), retained_models, path)
-            self.assertEqual(defaults["thinkingDefault"], "xhigh", path)
-            checked.append(path.name)
-        self.assertEqual(checked, [
-            "openclaw-live-model-routing.patch.json",
-            "openclaw-model-reliability.patch.json",
-            "openclaw-quality.patch.json",
-            "openclaw.template.json",
-        ])
-
-    def test_sol_6_1_default_preserves_nondefault_routes_and_aliases(self):
-        for name in ("openclaw-quality.patch.json", "openclaw.template.json"):
-            config = json.loads((ROOT / "config" / name).read_text())
-            models = config["agents"]["defaults"]["models"]
-            self.assertEqual(models["github-copilot/gpt-5.6-sol"], {
-                "alias": "sol", "params": {"thinking": "high"}}, name)
-            self.assertEqual(models["github-copilot/gpt-5.6-sol-fast"], {
-                "alias": "primary-sol-fast", "params": {"thinking": "xhigh"}}, name)
-        for name in ("openclaw-live-model-routing.patch.json", "openclaw-model-reliability.patch.json"):
-            config = json.loads((ROOT / "config" / name).read_text())
-            self.assertEqual(config["agents"]["entries"]["fitness"]["model"], {
-                "primary": "github-copilot/gpt-5.6-sol-fast",
-                "fallbacks": ["github-copilot/claude-sonnet-5"]}, name)
+                    refs = re.findall(pattern, archive.extractfile(member).read())
+                    self.assertTrue(all(ref == sol for ref in refs), member.name)
 
     def fixture(self, plugin_id="copilot", phase="preflight"):
         name = f"install-policy-allow-diagnostics-{phase}.json"
@@ -365,26 +353,6 @@ class CopilotHarnessPolicyTests(unittest.TestCase):
             f'@openclaw/diagnostics-otel@{manifest["packages"]["@openclaw/diagnostics-otel"]["version"]}',
             (ROOT / "docs/telemetry-privacy.md").read_text(),
         )
-
-    def test_astra_overlay_is_orchestrator_only(self):
-        patch = json.loads((ROOT / "config/openclaw-astra.patch.json").read_text())
-        defaults = patch["agents"]["defaults"]
-        self.assertNotIn("model", defaults)
-        self.assertEqual(defaults["models"], {
-            "github-copilot/gpt-6-astra": {"alias": "astra", "agentRuntime": {"id": "copilot"}}})
-        self.assertEqual(patch["agents"]["entries"]["orchestrator"]["model"]["primary"],
-                         "github-copilot/gpt-6-astra")
-        self.assertEqual(patch["agents"]["entries"]["orchestrator"]["model"]["fallbacks"],
-                         ["github-copilot/gpt-5.6-sol-fast"])
-        self.assertNotIn("allow", patch["plugins"])
-        for unrelated in ("channels", "tools", "commands", "session", "secrets", "cron", "hooks"):
-            self.assertNotIn(unrelated, patch)
-
-    def test_astra_overlay_does_not_override_healthcheck(self):
-        patch = json.loads((ROOT / "config/openclaw-astra.patch.json").read_text())
-        self.assertNotIn("healthcheck", patch["agents"]["entries"])
-        for model in ("github-copilot/gpt-5.6-luna", "github-copilot/claude-sonnet-5"):
-            self.assertNotIn(model, patch["agents"]["defaults"]["models"])
 
     def test_cli_environment_override_is_explicit_and_has_no_credentials(self):
         text = (ROOT / "config/openclaw-copilot.conf").read_text()

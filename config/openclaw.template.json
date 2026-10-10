@@ -83,58 +83,14 @@
   "agents": {
     "ownership": "explicit",
     "defaults": {
-      "model": {
-        "primary": "github-copilot/gpt-6.1-sol",
-        "fallbacks": [
-          "github-copilot/claude-sonnet-5"
-        ]
-      },
+      "model": "github-copilot/gpt-6.1-sol",
       "modelPolicy": {
         "allow": [
-          "github-copilot/gemini-2.5-pro",
-          "github-copilot/gpt-5.6-sol-fast",
-          "github-copilot/gpt-6-astra",
-          "github-copilot/gpt-5.6-sol",
-          "github-copilot/claude-sonnet-5",
-          "github-copilot/gpt-5.6-luna",
           "github-copilot/gpt-6.1-sol"
         ]
       },
       "thinkingDefault": "xhigh",
-      "utilityModel": "github-copilot/gpt-5.6-luna",
-      "models": {
-        "github-copilot/gemini-2.5-pro": {
-          "alias": "fallback-gemini"
-        },
-        "github-copilot/gpt-5.6-sol-fast": {
-          "alias": "primary-sol-fast",
-          "params": {
-            "thinking": "xhigh"
-          }
-        },
-        "github-copilot/gpt-6-astra": {
-          "alias": "astra",
-          "agentRuntime": {"id": "copilot"}
-        },
-        "github-copilot/gpt-5.6-sol": {
-          "alias": "sol",
-          "params": {
-            "thinking": "high"
-          }
-        },
-        "github-copilot/gpt-6.1-sol": {
-          "alias": "primary-sol-6-1",
-          "params": {
-            "thinking": "xhigh"
-          }
-        },
-        "github-copilot/gpt-5.6-luna": {
-          "alias": "utility-luna",
-          "params": {
-            "thinking": "low"
-          }
-        }
-      },
+      "utilityModel": "",
       "workspace": "/home/azureuser/.openclaw/workspace",
       "verboseDefault": "on",
       "maxConcurrent": 2,
@@ -150,7 +106,6 @@
         "maxConcurrent": 2,
         "maxSpawnDepth": 2,
         "maxChildrenPerAgent": 3,
-        "model": "github-copilot/gpt-5.6-luna",
         "thinking": "low",
         "runTimeoutSeconds": 2700
       },
@@ -209,8 +164,12 @@
         "memory": { "search": { "enabled": false } },
         "tools": {
           "allow": ["exec"],
-          "elevated": { "enabled": false },
-          "fs": { "workspaceOnly": true }
+          "elevated": {
+            "enabled": false
+          },
+          "fs": {
+            "workspaceOnly": true
+          }
         }
       },
       "main": {
@@ -237,12 +196,6 @@
       },
       "orchestrator": {
         "workspace": "/home/azureuser/.openclaw/workspace",
-        "model": {
-          "primary": "github-copilot/gpt-6-astra",
-          "fallbacks": [
-            "github-copilot/gpt-5.6-sol-fast"
-          ]
-        },
         "thinkingDefault": "high",
         "identity": {
           "name": "Orchestrator",
@@ -593,8 +546,7 @@
         "subagent": {
           "allowModelOverride": true,
           "allowedModels": [
-            "github-copilot/gpt-5.6-luna",
-            "github-copilot/claude-sonnet-5"
+            "github-copilot/gpt-6.1-sol"
           ]
         },
         "config": {
@@ -603,8 +555,6 @@
           "agents": [
             "main"
           ],
-          "model": "github-copilot/gpt-5.6-luna",
-          "modelFallback": "github-copilot/claude-sonnet-5",
           "allowedChatTypes": [
             "direct",
             "explicit"
@@ -660,7 +610,7 @@
         "subagent": {
           "allowModelOverride": true,
           "allowedModels": [
-            "github-copilot/gpt-5.6-luna"
+            "github-copilot/gpt-6.1-sol"
           ]
         },
         "config": {
@@ -681,36 +631,24 @@
           "dreaming": {
             "enabled": true,
             "frequency": "0 3 * * *",
-            "model": "github-copilot/gpt-5.6-luna",
             "timezone": "UTC",
             "verboseLogging": false,
             "storage": {
               "mode": "both",
               "separateReports": true
             },
-            "execution": {
-              "defaults": {
-                "model": "github-copilot/gpt-5.6-luna"
-              }
-            },
             "phases": {
               "light": {
                 "enabled": true,
                 "lookbackDays": 7,
                 "limit": 100,
-                "dedupeSimilarity": 0.9,
-                "execution": {
-                  "model": "github-copilot/gpt-5.6-luna"
-                }
+                "dedupeSimilarity": 0.9
               },
               "rem": {
                 "enabled": true,
                 "lookbackDays": 30,
                 "limit": 50,
-                "minPatternStrength": 0.65,
-                "execution": {
-                  "model": "github-copilot/gpt-5.6-luna"
-                }
+                "minPatternStrength": 0.65
               },
               "deep": {
                 "enabled": true,
@@ -721,10 +659,7 @@
                 "recencyHalfLifeDays": 14,
                 "maxAgeDays": 90,
                 "maxPromotedSnippetTokens": 160,
-                "maxPriorEntryLossFraction": 0.1,
-                "execution": {
-                  "model": "github-copilot/gpt-5.6-luna"
-                }
+                "maxPriorEntryLossFraction": 0.1
               }
             }
           }

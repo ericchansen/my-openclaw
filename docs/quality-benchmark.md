@@ -17,7 +17,7 @@ Select 10–20 real requests that previously failed or required substantial corr
 - channel-safe response behavior;
 - tasks versus automation semantics;
 - latency and timeout handling;
-- explicit model fallback observability.
+- inherited default model identity with no fallback routes.
 
 Store a private case ID, prompt, fixtures, expected outcome, hard constraints, completion tests, and the historical failure. Do not commit personal memory or transcripts.
 
@@ -39,22 +39,16 @@ Score each dimension 0–4 using evidence:
 | Channel safety | leak/wrong destination | unclear | correct audience and privacy |
 | Task/automation | wrong primitive | works with caveat | correct durable primitive |
 | Latency | timeout/no result | slow but bounded | responsive within target |
-| Fallback | silent/broken | fallback works | explicit and observable |
+| Model inheritance | alternate task route | unclear identity | verified native default |
 
 Critical instruction, privacy, authentication, or destructive-action violations are automatic failures regardless of total. Use blinded scoring where practical and record rationale plus reproducible evidence.
 
-## Model Matrix
+## Model Policy
 
-Run the same suite with:
-
-| Candidate | Thinking/effort |
-|---|---|
-| Claude Sonnet 5 | high |
-| GPT-5.6 Sol | high |
-| GPT-5.6 Sol Fast | high |
-| GPT-5.6 Luna | low |
-
-Provider vocabularies differ. Confirm authentication, model IDs, entitlement, and the reasoning levels exposed by the installed transport before a run. A catalog entry is not proof of availability.
+The configured task model is only `github-copilot/gpt-6.1-sol`, inherited from
+`agents.defaults.model`. Do not add aliases, model catalogs, per-task pins, or
+fallback routes for benchmarks. The native single-model access policy remains
+in force. Confirm authentication and actual default inference before a run.
 
 ## Experimental Control
 
@@ -63,8 +57,8 @@ Change one variable at a time:
 1. Pin OpenClaw version, workspace revision, config, tools, fixtures, channel, and timeout.
 2. Warm the same caches or record cold/warm state.
 3. Run cases in randomized order with a new isolated session per case.
-4. Repeat enough cases to separate a model difference from run variance.
-5. Record exact selected model, fallback used, tokens/context, latency, errors, and score evidence.
+4. Repeat enough cases to separate a quality difference from run variance.
+5. Record exact inherited model, tokens/context, latency, errors, and score evidence.
 6. Investigate regressions before averaging them away.
 
 Test pruning, Tool Search, builtin retrieval, Active Memory, and model promotion as separate experiments. Do not combine a model change with a memory/config change.
@@ -77,13 +71,17 @@ Promote only when the candidate:
 - improves instruction retention, completion, synthesis, and verification;
 - does not regress channel/task safety;
 - completes within bounded time;
-- has a tested explicit fallback path;
+- uses the inherited model without fallback routing;
 - wins on quality before latency/cost are used as tie-breakers.
 
 Canary in a private direct session, then one low-risk workflow, before broad rollout. Preserve raw private benchmark artifacts only for the minimum review period; retain an aggregate decision record without prompts or transcripts.
 
-## Current Promotion Decision
+## Current Desired State
 
-The private 2026-07 challenge run found both `github-copilot/claude-sonnet-5` and `github-copilot/gpt-5.6-sol` with high reasoning passed the final bounded two-child orchestration case; Sonnet initially won the latency tie-break. On 2026-07-17, the user selected Sol as the consistent interactive control plane and preferred quality over that latency difference. That record is history, not a ban on later catalog models.
+One native Sol 6.1 default serves interactive, agent, subagent, hook, automation,
+and memory tasks. `utilityModel: ""` disables automatic small-model derivation.
+Native plugin `allowedModels` safeguards allow only Sol 6.1. The vector encoder
+`text-embedding-3-small` is not a task model and retains its existing auth.
 
-The current interactive default is GPT-6.1 Sol extra-high with Claude Sonnet 5 fallback. Astra remains available. Agents choose per task. Luna/low is still a reasonable economy for bounded low-risk background work. Live canaries in 2026-07 confirmed default Sol/high resolution, direct Luna/low execution, and a native parent-to-default-Luna child handoff.
+Historical model experiments remain in Git history, not active desired-state
+instructions or configuration.
