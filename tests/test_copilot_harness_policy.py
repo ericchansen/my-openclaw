@@ -54,6 +54,18 @@ class CopilotHarnessPolicyTests(unittest.TestCase):
                     continue
                 self.assertFalse(any(model in text for model in blocked), path)
 
+    def test_interactive_default_is_sol_6_1_with_sonnet_fallback_and_policy_allow(self):
+        for path in sorted((ROOT / "config").glob("openclaw*.json")):
+            data = json.loads(path.read_text())
+            defaults = data.get("agents", {}).get("defaults", {})
+            if "model" not in defaults:
+                continue
+            self.assertEqual(defaults["model"]["primary"], "github-copilot/gpt-6.1-sol", path)
+            self.assertEqual(defaults["model"]["fallbacks"], ["github-copilot/claude-sonnet-5"], path)
+            self.assertEqual(defaults["models"]["github-copilot/gpt-6.1-sol"], {
+                "alias": "primary-sol-6-1", "params": {"thinking": "xhigh"}})
+            self.assertIn("github-copilot/gpt-6.1-sol", defaults["modelPolicy"]["allow"])
+
     def fixture(self, plugin_id="copilot", phase="preflight"):
         name = f"install-policy-allow-diagnostics-{phase}.json"
         data = json.loads((ROOT / "tests" / "fixtures" / name).read_text())

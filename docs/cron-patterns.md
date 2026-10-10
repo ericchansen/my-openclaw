@@ -50,7 +50,7 @@ openclaw automations add "0 9 * * 1" \
   --tz "UTC" \
   --session isolated \
   --light-context \
-  --model "github-copilot/gpt-5.6-sol-fast" \
+  --model "github-copilot/gpt-6.1-sol" \
   --fallbacks "github-copilot/claude-sonnet-5" \
   --thinking "xhigh" \
   --timeout-seconds 900 \
