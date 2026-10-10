@@ -9,6 +9,12 @@
       },
       "modelPolicy": {
         "allow": [
+          "github-copilot/gemini-2.5-pro",
+          "github-copilot/gpt-5.6-sol-fast",
+          "github-copilot/gpt-6-astra",
+          "github-copilot/gpt-5.6-sol",
+          "github-copilot/claude-sonnet-5",
+          "github-copilot/gpt-5.6-luna",
           "github-copilot/gpt-6.1-sol"
         ]
       },
@@ -45,7 +51,7 @@
       },
       "fitness": {
         "model": {
-          "primary": "github-copilot/gpt-6.1-sol",
+          "primary": "github-copilot/gpt-5.6-sol-fast",
           "fallbacks": [
             "github-copilot/claude-sonnet-5"
           ]

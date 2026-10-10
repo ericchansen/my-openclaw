@@ -1,6 +1,6 @@
 # GPT-6 Astra through the official Copilot harness
 
-Astra is available. The interactive default is GPT-5.6 Sol Fast extra-high with
+Astra is available. The interactive default is GPT-6.1 Sol extra-high with
 Claude Sonnet 5 fallback because running Astra as the main agent through
 `agentRuntime: {"id": "copilot"}` injected Copilot-harness instructions the model
 would not name. That opacity showed up as vague "execution constraints" /
@@ -75,7 +75,7 @@ in the repository manifest. Neither SDK nor CLI source was patched.
 
 ## Fallback and rollback
 
-Restore saved default and affected agent model settings to return to Sol Fast;
+Restore saved default and affected agent model settings to return to Sol 6.1;
 validate, restart if needed, and confirm the effective model on a real turn.
 Do not delete conversations, remove authentication, or relax isolation to switch
 models. Removing the optional plugin or persisted SDK state is a separate reviewed

@@ -6,7 +6,7 @@ Discord, Key Vault SecretRefs, daily OS-disk snapshots, and Azure Monitor.
 The runtime is the unmodified official OpenClaw **2026.9.2** on Node **22.23.1**.
 [Runtime versions and integrity pins](config/runtime-versions.json) are authoritative;
 do not substitute an experimental distribution or a mutable package tag.
-The interactive default is [GPT-5.6 Sol Fast](config/openclaw-model-reliability.patch.json)
+The interactive default is [GPT-6.1 Sol](config/openclaw-model-reliability.patch.json)
 extra-high with Claude Sonnet 5 fallback. GPT-6 Astra is available; it is not the
 default main agent because the Copilot harness hid instruction provenance
 and blocked authorized maintenance. Agents choose. See the
