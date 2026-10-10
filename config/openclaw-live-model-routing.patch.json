@@ -2,9 +2,14 @@
   "agents": {
     "defaults": {
       "model": {
-        "primary": "github-copilot/gpt-5.6-sol-fast",
+        "primary": "github-copilot/gpt-6.1-sol",
         "fallbacks": [
           "github-copilot/claude-sonnet-5"
+        ]
+      },
+      "modelPolicy": {
+        "allow": [
+          "github-copilot/gpt-6.1-sol"
         ]
       },
       "thinkingDefault": "xhigh",
@@ -20,6 +25,12 @@
           "agentRuntime": {
             "id": "copilot"
           }
+        },
+        "github-copilot/gpt-6.1-sol": {
+          "alias": "primary-sol-6-1",
+          "params": {
+            "thinking": "xhigh"
+          }
         }
       }
     },
@@ -34,7 +45,7 @@
       },
       "fitness": {
         "model": {
-          "primary": "github-copilot/gpt-5.6-sol-fast",
+          "primary": "github-copilot/gpt-6.1-sol",
           "fallbacks": [
             "github-copilot/claude-sonnet-5"
           ]
