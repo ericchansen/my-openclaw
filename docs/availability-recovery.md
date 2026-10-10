@@ -7,11 +7,8 @@ with matching diagnostics plugin and Node 22.23.1, pinned in
 [runtime-versions.json](../config/runtime-versions.json). Experimental core patches,
 custom browser-egress integration, and the proposed reminder plugin were not promoted.
 
-The interactive default is GPT-6.1 Sol extra-high with Claude Sonnet 5
-fallback via [openclaw-model-reliability.patch.json](../config/openclaw-model-reliability.patch.json).
-Astra is available through the official Copilot harness; see [astra-model.md](astra-model.md).
-Built-in provider trials produced invalid history arguments; a working harness or
-fallback does not prove every provider path fixed.
+All task inference inherits the native GPT-6.1 Sol default, with no fallbacks
+or task-specific model pins. See [the reference configuration](../config/openclaw.template.json).
 Remove retired `messages.suppressToolErrors` and `gateway.controlUi.toolTitles`
 through `openclaw config unset` if present, then validate with the published CLI.
 

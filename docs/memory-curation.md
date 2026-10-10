@@ -27,9 +27,9 @@ Tagged references:
 - Active Memory targets `main` and only `direct`/`explicit` chats. It uses
   recent context, does not persist its temporary subagent transcript, bounds
   recall to 15 seconds and 220 characters, and logs timing/outcome rather than
-  raw recalled content. Luna is the explicit recall model; the configured Sonnet
-  `modelFallback` is only a last-resort model-resolution choice in `2026.9.1`,
-  not runtime failover. Both are restricted by the plugin subagent allowlist.
+  raw recalled content. Recall inherits the native Sol 6.1 default, with no
+  explicit model or modelFallback. Plugin subagent allowedModels safeguards
+  permit only Sol 6.1.
 - Memory-core admission excludes group/channel and email/Gmail/webhook sessions
   from dreaming ingestion. This is additive to OpenClaw's provenance gates and
   does not erase material already indexed.
@@ -37,7 +37,8 @@ Tagged references:
 ## Builtin retrieval
 
 The selected memory slot is `memory-core`, using GitHub Copilot
-`text-embedding-3-small`. SQLite FTS and vector indexes are enabled with a
+`text-embedding-3-small` solely as the vector embedding encoder, not an agent
+or task inference model. Preserve its encoder/provider/auth settings. SQLite FTS and vector indexes are enabled with a
 six-result/0.35-score query bound and embedding cache enabled.
 
 In `2026.9.1`, hybrid BM25/vector retrieval, a 30-day decay for dated notes, and
@@ -58,8 +59,8 @@ bounds. Only deep may promote to `MEMORY.md`. It rejects candidates that miss
 score, recall-count, and query-diversity gates, excludes untrusted/system
 provenance before the model prompt, limits snippet size, and rejects rewrites
 that remove more than ten percent of prior entries. `DREAMS.md` and separate
-phase reports make accepted changes reviewable. The approved Luna model is
-allowlisted for these bounded plugin subagents.
+phase reports make accepted changes reviewable. Dreaming and all its phases
+inherit Sol 6.1; plugin subagent safeguards allow only that model.
 
 ## Memory Wiki
 
