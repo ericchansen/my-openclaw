@@ -67,7 +67,15 @@
         ]
       },
       "modelPolicy": {
-        "allow": ["github-copilot/gpt-6.1-sol"]
+        "allow": [
+          "github-copilot/gemini-2.5-pro",
+          "github-copilot/gpt-5.6-sol-fast",
+          "github-copilot/gpt-6-astra",
+          "github-copilot/gpt-5.6-sol",
+          "github-copilot/claude-sonnet-5",
+          "github-copilot/gpt-5.6-luna",
+          "github-copilot/gpt-6.1-sol"
+        ]
       },
       "thinkingDefault": "xhigh",
       "utilityModel": "github-copilot/gpt-5.6-luna",
@@ -81,6 +89,12 @@
         "github-copilot/gpt-6-astra": {
           "alias": "astra",
           "agentRuntime": {"id": "copilot"}
+        },
+        "github-copilot/gpt-5.6-sol": {
+          "alias": "sol",
+          "params": {
+            "thinking": "high"
+          }
         },
         "github-copilot/gpt-6.1-sol": {
           "alias": "primary-sol-6-1",

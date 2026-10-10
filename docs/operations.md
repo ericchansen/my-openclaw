@@ -64,7 +64,7 @@ Do not replace live channels with a template. Review identities, owner command
 grants, agent routing, plugin allowlist additions, and model overrides separately.
 Preserve existing approved family configuration; future identity/sharing changes
 need explicit review, not an implicit grant from this upgrade.
-The interactive default is GPT-5.6 Sol Fast extra-high with Claude Sonnet 5 fallback. Astra is available; agents choose. See the [Astra overlay](astra-model.md).
+The interactive default is GPT-6.1 Sol extra-high with Claude Sonnet 5 fallback. Astra is available; agents choose. See the [Astra overlay](astra-model.md).
 
 ### Trusted operator blocked by a model-facing tool
 

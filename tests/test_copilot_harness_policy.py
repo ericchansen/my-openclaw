@@ -1,8 +1,11 @@
+import base64
 import copy
+import io
 import json
 from pathlib import Path
 import subprocess
 import sys
+import tarfile
 import unittest
 
 
@@ -30,31 +33,33 @@ class CopilotHarnessPolicyTests(unittest.TestCase):
             "github-copilot/claude-opus-" + "5",
             "github-copilot/claude-sonnet-" + "4.6",
         )
-        active_paths = (
-            ROOT / ".github",
-            ROOT / "README.md",
-            ROOT / "azure.yaml",
-            ROOT / "config",
-            ROOT / "deploy.ps1",
-            ROOT / "docs",
-            ROOT / "infra",
-            ROOT / "migrate.ps1",
-            ROOT / "scripts",
-            ROOT / "tests",
-            ROOT / "workspace",
-        )
-        for active_path in active_paths:
-            paths = (active_path,) if active_path.is_file() else active_path.rglob("*")
-            for path in paths:
-                if not path.is_file():
-                    continue
-                try:
-                    text = path.read_text(errors="strict")
-                except UnicodeDecodeError:
-                    continue
-                self.assertFalse(any(model in text for model in blocked), path)
+        tracked = subprocess.run(
+            ["git", "ls-files", "-z"], cwd=ROOT, check=True, capture_output=True,
+        ).stdout.decode().split("\0")
+        for relative in filter(None, tracked):
+            path = ROOT / relative
+            self.assertFalse(any(model.encode() in path.read_bytes() for model in blocked), path)
+
+        # Scan the payload, not only the encoded deployment asset.
+        bundle = ROOT / "infra/runtime-assets.tar.xz.b64"
+        compressed = base64.b64decode(bundle.read_bytes(), validate=True)
+        with tarfile.open(fileobj=io.BytesIO(compressed), mode="r:xz") as archive:
+            for member in archive:
+                if member.isfile():
+                    payload = archive.extractfile(member).read()
+                    self.assertFalse(any(model.encode() in payload for model in blocked), member.name)
 
     def test_interactive_default_is_sol_6_1_with_sonnet_fallback_and_policy_allow(self):
+        retained_models = {
+            "github-copilot/gemini-2.5-pro",
+            "github-copilot/gpt-5.6-sol-fast",
+            "github-copilot/gpt-6-astra",
+            "github-copilot/gpt-5.6-sol",
+            "github-copilot/claude-sonnet-5",
+            "github-copilot/gpt-5.6-luna",
+            "github-copilot/gpt-6.1-sol",
+        }
+        checked = []
         for path in sorted((ROOT / "config").glob("openclaw*.json")):
             data = json.loads(path.read_text())
             defaults = data.get("agents", {}).get("defaults", {})
@@ -64,7 +69,29 @@ class CopilotHarnessPolicyTests(unittest.TestCase):
             self.assertEqual(defaults["model"]["fallbacks"], ["github-copilot/claude-sonnet-5"], path)
             self.assertEqual(defaults["models"]["github-copilot/gpt-6.1-sol"], {
                 "alias": "primary-sol-6-1", "params": {"thinking": "xhigh"}})
-            self.assertIn("github-copilot/gpt-6.1-sol", defaults["modelPolicy"]["allow"])
+            self.assertEqual(set(defaults["modelPolicy"]["allow"]), retained_models, path)
+            self.assertEqual(defaults["thinkingDefault"], "xhigh", path)
+            checked.append(path.name)
+        self.assertEqual(checked, [
+            "openclaw-live-model-routing.patch.json",
+            "openclaw-model-reliability.patch.json",
+            "openclaw-quality.patch.json",
+            "openclaw.template.json",
+        ])
+
+    def test_sol_6_1_default_preserves_nondefault_routes_and_aliases(self):
+        for name in ("openclaw-quality.patch.json", "openclaw.template.json"):
+            config = json.loads((ROOT / "config" / name).read_text())
+            models = config["agents"]["defaults"]["models"]
+            self.assertEqual(models["github-copilot/gpt-5.6-sol"], {
+                "alias": "sol", "params": {"thinking": "high"}}, name)
+            self.assertEqual(models["github-copilot/gpt-5.6-sol-fast"], {
+                "alias": "primary-sol-fast", "params": {"thinking": "xhigh"}}, name)
+        for name in ("openclaw-live-model-routing.patch.json", "openclaw-model-reliability.patch.json"):
+            config = json.loads((ROOT / "config" / name).read_text())
+            self.assertEqual(config["agents"]["entries"]["fitness"]["model"], {
+                "primary": "github-copilot/gpt-5.6-sol-fast",
+                "fallbacks": ["github-copilot/claude-sonnet-5"]}, name)
 
     def fixture(self, plugin_id="copilot", phase="preflight"):
         name = f"install-policy-allow-diagnostics-{phase}.json"
