@@ -2,8 +2,8 @@
 
 ## Official-release recovery
 
-Production runs the unmodified [official 2026.9.2 release](https://github.com/openclaw/openclaw/releases/tag/v2026.9.2)
-with matching diagnostics plugin and Node 22.23.1, pinned in
+The desired runtime is the unmodified [official 2026.10.3 release](https://github.com/openclaw/openclaw/releases/tag/v2026.10.3)
+with matching diagnostics plugin and Node 24.21.0, pinned in
 [runtime-versions.json](../config/runtime-versions.json). Experimental core patches,
 custom browser-egress integration, and the proposed reminder plugin were not promoted.
 
@@ -32,8 +32,8 @@ healthcheck agent: empty workspace, no private mount, browser, memory search, or
 heartbeat; only sandboxed, network-isolated exec. It requires an unpredictable
 token in both a successful tool receipt and final response, not an HTTP success
 or echoed prompt. No user conversation is loaded and no chat message is sent.
-The probe requests thinking `off`, avoiding a model-specific reasoning level
-that the selected model's catalog may reject before any tool runs.
+The probe requests thinking `low`, the lowest reasoning effort accepted by Sol.
+Thinking `off` becomes `none`, which this model rejects before any tool runs.
 The template `healthcheck` entry has no model, so it inherits the native default.
 A Copilot-harness model is a poor canary: those exec receipts currently omit the
 exit-status proof. Live may pin a native utility model for that probe.

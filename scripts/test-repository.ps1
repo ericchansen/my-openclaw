@@ -245,9 +245,9 @@ Invoke-Check "Exact official CLI, migration and recovery contracts" {
         Assert-True ($version.Trim() -match "^OpenClaw $([regex]::Escape($manifest.openclaw.version))(?: \([A-Za-z0-9._+-]+\))?$") "Wrong CLI release."
         foreach ($name in @("list", "runs")) {
             $help = Invoke-Cli -Arguments @("automations", $name, "--help") -Text
-            Assert-True ($help -match '--json' -and $help -notmatch '--scope|--offset') "Unsupported automation CLI contract."
+            Assert-True ($help -match '--json' -and $help -notmatch '--scope') "Unsupported automation CLI contract."
             Assert-True ($(if ($name -eq "list") { $help -match '--all' -and $help -notmatch '--limit' }
-                else { $help -match '--id\s+<[^>]+>' -and $help -match '--limit' })) "Missing automation flags."
+                else { $help -match '--id\s+<[^>]+>' -and $help -match '--limit' -and $help -match '--offset' })) "Missing automation flags."
         }
         $safeDir = if ($IsWindows) { "$env:WINDIR\System32" } else { Join-Path $scratch "safe-bin" }
         $safeCommand = if ($IsWindows) { Join-Path $safeDir "where.exe" } else { Join-Path $safeDir "false" }

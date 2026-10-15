@@ -186,7 +186,7 @@ class AvailabilityTests(unittest.TestCase):
         argv = popen.call_args.args[0]
         self.assertEqual(argv[:8], [
             "openclaw", "agent", "--agent", "healthcheck",
-            "--session-key", "agent:healthcheck:availability", "--thinking", "off",
+            "--session-key", "agent:healthcheck:availability", "--thinking", "low",
         ])
         self.assertEqual(argv[8:10], ["--timeout", "90"])
         self.assertNotIn("--deliver", argv)
