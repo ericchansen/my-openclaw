@@ -9,7 +9,7 @@ exporter is enabled. Its ARM64 SHA-256 is copied from the matching
 and is checked before extraction.
 
 The exporter is provided by the separately installed, reviewed
-`@openclaw/diagnostics-otel@2026.9.2` npm plugin, not by an assumed bundled
+`@openclaw/diagnostics-otel@2026.10.3` npm plugin, not by an assumed bundled
 copy. Its SHA-512 is pinned in `config/runtime-versions.json`, verified against
 the registry before install, and revalidated with runtime plugin metadata
 before the Gateway starts. See [OpenClaw plugin documentation](https://docs.openclaw.ai/tools/plugin).

@@ -20,6 +20,25 @@ OFFICIAL_PLUGIN_PACKAGES = {
 
 
 class CopilotHarnessPolicyTests(unittest.TestCase):
+    def test_sol_reasoning_metadata_matches_provider_contract(self):
+        for name in ("openclaw.template.json", "openclaw-quality.patch.json"):
+            with self.subTest(config=name):
+                config = json.loads((ROOT / "config" / name).read_text())
+                providers = config["models"]["providers"]
+                self.assertEqual(set(providers), {"github-copilot"})
+                overlay = providers["github-copilot"]
+                self.assertEqual(set(overlay), {"models"})
+                self.assertEqual(len(overlay["models"]), 1)
+                model = overlay["models"][0]
+                self.assertEqual(model["id"], "gpt-6.1-sol")
+                self.assertTrue(model["reasoning"])
+                self.assertEqual(model["thinkingLevelMap"], {
+                    "off": None, "minimal": "low", "xhigh": "xhigh", "max": "max",
+                })
+                self.assertTrue(model["compat"]["supportsReasoningEffort"])
+                self.assertEqual(model["compat"]["supportedReasoningEfforts"],
+                                 ["low", "medium", "high", "xhigh", "max"])
+
     def test_native_sol_default_and_inheritance(self):
         sol = "github-copilot/gpt-6.1-sol"
         for name in ("openclaw.template.json", "openclaw-quality.patch.json"):

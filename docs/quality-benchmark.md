@@ -46,8 +46,10 @@ Critical instruction, privacy, authentication, or destructive-action violations 
 ## Model Policy
 
 The configured task model is only `github-copilot/gpt-6.1-sol`, inherited from
-`agents.defaults.model`. Do not add aliases, model catalogs, per-task pins, or
-fallback routes for benchmarks. The native single-model access policy remains
+`agents.defaults.model`. The bundled-provider metadata overlay declares Sol's
+reasoning capabilities without replacing its endpoint or authentication.
+Do not add aliases, alternate model catalogs, per-task pins, or fallback routes
+for benchmarks. The native single-model access policy remains
 in force. Confirm authentication and actual default inference before a run.
 
 ## Experimental Control
@@ -82,6 +84,14 @@ One native Sol 6.1 default serves interactive, agent, subagent, hook, automation
 and memory tasks. `utilityModel: ""` disables automatic small-model derivation.
 Native plugin `allowedModels` safeguards allow only Sol 6.1. The vector encoder
 `text-embedding-3-small` is not a task model and retains its existing auth.
+
+The template and quality configuration declare Sol as a reasoning model through
+`models.providers.github-copilot.models`, leaving the bundled endpoint and
+authentication unchanged. Accepted efforts are `low`, `medium`, `high`, `xhigh`,
+and `max`; `minimal` maps to `low`, and `off` is unavailable. Interactive turns
+default to `xhigh`; the availability probe uses `low`. Acceptance requires an
+actual human-channel request with successful inference and delivered output,
+not only Gateway health or a CLI turn with an explicit thinking override.
 
 Historical model experiments remain in Git history, not active desired-state
 instructions or configuration.

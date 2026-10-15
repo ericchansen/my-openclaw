@@ -1,7 +1,7 @@
 # Operations and rollback
 
 Use the exact official release and integrity values in
-[runtime-versions.json](../config/runtime-versions.json), currently OpenClaw 2026.9.2.
+[runtime-versions.json](../config/runtime-versions.json), currently OpenClaw 2026.10.3.
 OpenClaw owns heartbeat through its documented defaults; this repository does not
 override heartbeat behavior. Systemd does not own heartbeat. Systemd owns the
 Gateway, the fifteen-minute runtime health probe, the snapshot timer, and the

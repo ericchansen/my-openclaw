@@ -3,7 +3,7 @@
 Reproducible Azure VM deployment for a private OpenClaw gateway with Telegram,
 Discord, Key Vault SecretRefs, daily OS-disk snapshots, and Azure Monitor.
 
-The runtime is the unmodified official OpenClaw **2026.9.2** on Node **22.23.1**.
+The runtime is the unmodified official OpenClaw **2026.10.3** on Node **24.21.0**.
 [Runtime versions and integrity pins](config/runtime-versions.json) are authoritative;
 do not substitute an experimental distribution or a mutable package tag.
 All task inference inherits the native [GPT-6.1 Sol default](config/openclaw.template.json),

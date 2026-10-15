@@ -182,7 +182,7 @@ def capture(process):
 def invoke(state_dir, prompt):
     argv = [
         "openclaw", "agent", "--agent", "healthcheck",
-        "--session-key", SESSION_KEY, "--thinking", "off",
+        "--session-key", SESSION_KEY, "--thinking", "low",
         "--timeout", "90", "--message", prompt, "--json",
     ]
     environment = dict(os.environ, OPENCLAW_STATE_DIR=str(state_dir))

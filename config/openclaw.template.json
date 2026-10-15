@@ -80,6 +80,29 @@
       }
     }
   },
+  "models": {
+    "providers": {
+      "github-copilot": {
+        "models": [
+          {
+            "id": "gpt-6.1-sol",
+            "name": "GPT-6.1 Sol",
+            "reasoning": true,
+            "thinkingLevelMap": {
+              "off": null,
+              "minimal": "low",
+              "xhigh": "xhigh",
+              "max": "max"
+            },
+            "compat": {
+              "supportsReasoningEffort": true,
+              "supportedReasoningEfforts": ["low", "medium", "high", "xhigh", "max"]
+            }
+          }
+        ]
+      }
+    }
+  },
   "agents": {
     "ownership": "explicit",
     "defaults": {
@@ -472,7 +495,7 @@
         "YOUR_GUILD_ID": {
           "requireMention": true,
           "toolsBySender": {
-            "YOUR_DISCORD_USER_ID": {
+            "id:YOUR_DISCORD_USER_ID": {
               "allow": ["*"]
             },
             "*": {
