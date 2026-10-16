@@ -1,13 +1,13 @@
 # Automations and Scheduled Work
 
-Manage schedules with `openclaw automations`, the primary `2026.9.1` CLI name.
+Manage schedules with `openclaw automations` on the [pinned runtime](../config/runtime-versions.json).
 `openclaw cron` remains an alias and `cron.*` remains the persisted
 configuration/runtime JSON namespace. Tasks are execution records, not a
 scheduler.
 
 Official references:
-[automations](https://github.com/openclaw/openclaw/blob/v2026.9.1/docs/automation/cron-jobs.md)
-and [CLI](https://github.com/openclaw/openclaw/blob/v2026.9.1/docs/cli/cron.md).
+[automations](https://github.com/openclaw/openclaw/blob/v2026.10.3/docs/automation/cron-jobs.md)
+and [CLI](https://github.com/openclaw/openclaw/blob/v2026.10.3/docs/cli/cron.md).
 
 ## Inventory before mutation
 
@@ -66,8 +66,8 @@ openclaw automations edit <job-id> \
   --failure-alert-to "<approved-destination>"
 ```
 
-Creation does not accept failure-alert flags in `2026.9.1`; apply them with an
-in-place edit. Test with `openclaw automations run <job-id> --wait`, then inspect
+The example sets failure alerts with an in-place edit. Test with
+`openclaw automations run <job-id> --wait`, then inspect
 the exact run. Execution `status` and whole-run `completionStatus` are distinct;
 delivery status is separate again. A successful execution with failed required
 delivery is not a successful completed automation.

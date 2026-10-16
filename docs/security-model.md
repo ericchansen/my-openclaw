@@ -4,8 +4,8 @@ The reproducible deployment baseline is pinned in [runtime-versions.json](../con
 The runtime upgrade preserves existing approved routing, credentials, and data.
 The isolated baseline and explicitly opted-in trusted-operator profile below are
 different deployment policies, not requirements of the upstream runtime.
-See upstream [security](https://github.com/openclaw/openclaw/blob/v2026.9.2/docs/gateway/security/index.md)
-and [sandboxing](https://github.com/openclaw/openclaw/blob/v2026.9.2/docs/gateway/sandboxing.md).
+See upstream [security](https://github.com/openclaw/openclaw/blob/v2026.10.3/docs/gateway/security/index.md)
+and [sandboxing](https://github.com/openclaw/openclaw/blob/v2026.10.3/docs/gateway/sandboxing.md).
 
 ## Isolated baseline
 
@@ -46,7 +46,7 @@ Browser CDP uses its reviewed dedicated network; host-browser control stays disa
 Preserve private-network/SSRF restrictions and fail closed on unsupported navigation
 or backend failure, rather than executing on the host.
 
-Owner host exec remains [approval-gated](https://github.com/openclaw/openclaw/blob/v2026.9.2/docs/tools/exec-approvals.md),
+Owner host exec remains [approval-gated](https://github.com/openclaw/openclaw/blob/v2026.10.3/docs/tools/exec-approvals.md),
 with deny fallback when approval is unavailable. Session tools remain tree-scoped;
 same-agent memory exceptions retain upstream privacy guards. Approvals are safety
 gates, not multi-user authorization. The native Sol 6.1 model default broadens no permissions.
@@ -112,11 +112,10 @@ Do not equate CLI/operator checks with observed human-client ingress.
 
 ### Administration from trusted conversations
 
-Full host access does not remove every upstream model-tool restriction. In
-2026.9.2, the native `automations` tool still restricts cross-conversation and
-operator-created jobs; its Gateway-wide management grant is specific to an
-authenticated Control UI administrator turn. Owner allowlists, session visibility,
-and filesystem access are not substitutes for that grant.
+Full host access does not remove every upstream model-tool restriction.
+Inspect the requesting tool's actual ownership and administrator-scope checks;
+owner allowlists, session visibility, and filesystem access are not substitutes
+for a Gateway administration grant.
 
 The trusted-operator profile already permits a separate supported route: use
 ordinary host `exec` to run the installed, authenticated `openclaw automations`
@@ -128,11 +127,11 @@ Never forge a Control UI identity, remove caller metadata, inject an operator
 token, or rewrite SQLite to defeat the native tool's scope. An authorization
 failure from the configured CLI remains a blocker.
 
-The pinned Copilot harness also rejects the delegated `openclaw` expert's
-in-memory turn with `canonical transcript persistence requires an exact runtime
-session target`. Native provider conversations and ordinary host CLI execution
-are separate paths. Use the supported CLI for authorized administration without
-claiming the delegated expert is repaired.
+If the Copilot harness rejects a delegated `openclaw` expert with
+`canonical transcript persistence requires an exact runtime session target`,
+that failure does not establish that native provider conversations or ordinary
+host CLI execution are unavailable. Use the supported CLI for authorized
+administration without claiming the delegated expert is repaired.
 
 System-scope Gateway units cannot use OpenClaw managed `update.run` handoff.
 Authorized runtime updates use `sudo /usr/local/sbin/openclaw-update` after

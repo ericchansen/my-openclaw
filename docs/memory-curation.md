@@ -5,11 +5,11 @@ permanent context. Never commit live `MEMORY.md`, `DREAMS.md`, daily notes,
 wiki files, indexes, or transcripts to this repository.
 
 Tagged references:
-[memory](https://github.com/openclaw/openclaw/blob/v2026.9.1/docs/concepts/memory.md),
-[builtin search](https://github.com/openclaw/openclaw/blob/v2026.9.1/docs/concepts/memory-builtin.md),
-[active memory](https://github.com/openclaw/openclaw/blob/v2026.9.1/docs/concepts/active-memory.md),
-[dreaming](https://github.com/openclaw/openclaw/blob/v2026.9.1/docs/concepts/dreaming.md), and
-[memory wiki](https://github.com/openclaw/openclaw/blob/v2026.9.1/docs/plugins/memory-wiki.md).
+[memory](https://github.com/openclaw/openclaw/blob/v2026.10.3/docs/concepts/memory.md),
+[builtin search](https://github.com/openclaw/openclaw/blob/v2026.10.3/docs/concepts/memory-builtin.md),
+[active memory](https://github.com/openclaw/openclaw/blob/v2026.10.3/docs/concepts/active-memory.md),
+[dreaming](https://github.com/openclaw/openclaw/blob/v2026.10.3/docs/concepts/dreaming.md), and
+[memory wiki](https://github.com/openclaw/openclaw/blob/v2026.10.3/docs/plugins/memory-wiki.md).
 
 ## Privacy boundary
 
@@ -41,11 +41,11 @@ The selected memory slot is `memory-core`, using GitHub Copilot
 or task inference model. Preserve its encoder/provider/auth settings. SQLite FTS and vector indexes are enabled with a
 six-result/0.35-score query bound and embedding cache enabled.
 
-In `2026.9.1`, hybrid BM25/vector retrieval, a 30-day decay for dated notes, and
-MMR with lambda `0.7` are fixed maintained behavior, not writable schema keys.
-Cache entry count, index identity, sync timing, and watcher timing likewise
-have no supported tuning keys. The configured provider/model, tokenizer, and
-vector setting are the durable index identity inputs. Do not invent retired
+Builtin retrieval combines BM25/vector relevance, recency, importance, and
+MMR diversity. Use the pinned schema and upstream reference for supported
+controls instead of copying historical tuning values. The configured
+provider/model, sources, and scope affect index compatibility; follow the
+runtime's explicit rebuild guidance when they change. Do not invent retired
 `memory.search.query.hybrid`, `memory.search.sync`, or store-driver keys.
 
 ## Curated files and dreaming

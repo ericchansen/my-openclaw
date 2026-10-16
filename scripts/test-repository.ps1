@@ -68,6 +68,7 @@ Invoke-Check "Python behavioral regressions" {
 }
 
 Invoke-Check "Manifest and configuration invariants" {
+    Invoke-Linux python3 @((Get-LinuxPath (Join-Path $PSScriptRoot "sync-quality-patch.py")), "--check")
     Assert-True ($manifest.schemaVersion -eq 1) "Unknown runtime manifest schema."
     Assert-True ($manifest.openclaw.version -match '^\d{4}\.\d+\.\d+$') "Runtime must be an exact release."
     Assert-True ($manifest.upstream.tag -eq "v$($manifest.openclaw.version)") "Tag/version mismatch."
@@ -272,6 +273,40 @@ Invoke-Check "Exact official CLI, migration and recovery contracts" {
             $config | ConvertTo-Json -Depth 100 | Set-Content $env:OPENCLAW_CONFIG_PATH
             Assert-True (Invoke-Cli -Arguments @("config", "validate", "--json")).valid "Invalid $name."
         }
+        $config = Get-Content (Join-Path $scratch "openclaw.template.json") -Raw |
+            ConvertFrom-Json -AsHashtable -Depth 100
+        $workspace = Join-Path $scratch "baseline-workspace"
+        New-Item -ItemType Directory $workspace | Out-Null
+        $soul = Join-Path $workspace "SOUL.md"
+        Set-Content $soul "Preserve this existing workspace file." -NoNewline
+        $config.agents.defaults.workspace = $workspace
+        foreach ($id in $config.agents.entries.Keys) {
+            $config.agents.entries[$id].workspace = if ($id -eq "healthcheck") {
+                Join-Path $scratch "baseline-healthcheck"
+            } else { $workspace }
+        }
+        $config.plugins.entries.'memory-wiki'.config.vault.path = Join-Path $scratch "baseline-wiki"
+        $env:OPENCLAW_CONFIG_PATH = Join-Path $scratch "baseline.json"
+        $expectedBaseline = Join-Path $scratch "baseline-expected.json"
+        $config | ConvertTo-Json -Depth 100 | Set-Content $env:OPENCLAW_CONFIG_PATH
+        Copy-Item $env:OPENCLAW_CONFIG_PATH $expectedBaseline
+        Invoke-Cli -Arguments @("config", "set", "agents.defaults.systemAgent.agentId", "main") -Text | Out-Null
+        Invoke-Cli -Arguments @("setup", "--baseline") -Text | Out-Null
+        $baselineCompare = @'
+const fs = require("node:fs"), assert = require("node:assert/strict");
+const actual = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+const expected = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+for (const key of ["model", "modelPolicy", "maxConcurrent", "subagents", "utilityModel"])
+  assert.deepStrictEqual(actual.agents.defaults[key], expected.agents.defaults[key]);
+assert.deepStrictEqual(actual.channels, expected.channels);
+assert.deepStrictEqual(actual.bindings, expected.bindings);
+assert.equal(actual.agents.defaults.systemAgent.agentId, "main");
+'@
+        & $script:node -e $baselineCompare $env:OPENCLAW_CONFIG_PATH $expectedBaseline
+        if ($LASTEXITCODE -ne 0) { throw "Baseline setup changed product defaults or channel routing." }
+        Assert-True ([IO.File]::ReadAllText($soul) -ceq "Preserve this existing workspace file.") (
+            "Baseline setup replaced existing workspace content."
+        )
         # Exercise the real effective-config resolver, not a raw JSON read.
         $include = Join-Path $scratch "otel.include.json"
         @{enabled=$true; endpoint='${OPENCLAW_TEST_OTLP_ENDPOINT}'; protocol="http/protobuf"; captureContent=$false} |

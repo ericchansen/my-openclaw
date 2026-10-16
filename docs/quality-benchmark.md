@@ -1,6 +1,8 @@
 # Private Quality Challenge Suite
 
-Benchmark before changing the production primary model. Optimize quality first, then latency/cost. Keep prompts, transcripts, scores, and user data outside the repository.
+Benchmark behavior and configuration changes before promotion. Keep the
+configured model fixed, optimize quality before latency/cost, and keep prompts,
+transcripts, scores, and user data outside the repository.
 
 ## Build the Suite
 
@@ -63,7 +65,8 @@ Change one variable at a time:
 5. Record exact inherited model, tokens/context, latency, errors, and score evidence.
 6. Investigate regressions before averaging them away.
 
-Test pruning, Tool Search, builtin retrieval, Active Memory, and model promotion as separate experiments. Do not combine a model change with a memory/config change.
+Test pruning, Tool Search, builtin retrieval, and Active Memory as separate
+experiments. Model changes are outside this configured single-model policy.
 
 ## Promotion Gate
 
