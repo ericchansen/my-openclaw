@@ -35,8 +35,8 @@ or echoed prompt. No user conversation is loaded and no chat message is sent.
 The probe requests thinking `low`, the lowest reasoning effort accepted by Sol.
 Thinking `off` becomes `none`, which this model rejects before any tool runs.
 The template `healthcheck` entry has no model, so it inherits the native default.
-A Copilot-harness model is a poor canary: those exec receipts currently omit the
-exit-status proof. Live may pin a native utility model for that probe.
+Keep the canary on the native provider: a Copilot-harness receipt without
+exit-status proof is not equivalent evidence. Do not add a utility-model override.
 
 Successful availability-canary evidence is cached for up to one hour. The
 [runtime health probe](../scripts/openclaw-runtime-health-probe.sh) intentionally
@@ -79,10 +79,9 @@ Only explicitly reviewed senders/groups may reach a capable agent. If the
 deployment intentionally trusts all admitted contexts, remove wildcard group
 admission before switching the catch-all; never grant arbitrary groups access.
 
-The feeding-workflow incident had two independent defects: an omitted group
-binding prevented writes, and the reminder's state path used a read-only sandbox
-home. Keep the tracker, canonical data and reminder state on the same reviewed
-writable workspace. Require a successful tool receipt and persisted readback
+Check both the group's binding and the writer's filesystem access. Keep the
+tracker, canonical data and reminder state on the same reviewed writable
+workspace. Require a successful tool receipt and persisted readback
 before acknowledgement, and use the original inbound timestamp for relative
 dates. Recover only evidenced missing entries through the existing idempotent
 writer; repeated follow-ups are not additional events.

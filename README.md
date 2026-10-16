@@ -12,6 +12,14 @@ small-model derivation. The native access policy and plugin allowed-model safegu
 permit only Sol 6.1. `text-embedding-3-small` is retained solely for vector encoding,
 not agent or task inference. There is no custom model catalog, alias, or routing overlay.
 
+## Start here
+
+For a new installation, follow [the complete setup walkthrough](docs/getting-started.md):
+accounts and costs, deployment, credentials, configuration, access, activation,
+and a real channel/tool check. Provisioning alone intentionally leaves the
+Gateway unstarted. The walkthrough reproduces the current product; it does not
+replace an existing installation's configuration or data.
+
 ## Operating boundaries
 
 - OpenClaw owns heartbeat through its documented defaults; this repository does not
@@ -109,6 +117,8 @@ Use `-UseTailscaleSsh` only after tailnet enrollment and SSH authorization are v
 - [Backup, staged restore, and rollback](docs/backup-restore.md)
 - [Security and trusted-family boundaries](docs/security-model.md)
 - [Key Vault integration](docs/keyvault-integration.md) and [telemetry privacy](docs/telemetry-privacy.md)
+- [Parent-owned orchestration](docs/orchestrator-pattern.md) and [task conventions](docs/todo-conventions.md)
+- [Automations](docs/cron-patterns.md), [memory](docs/memory-curation.md), and [quality checks](docs/quality-benchmark.md)
 
 The [workspace templates](workspace/) are for new workspaces only. Never overwrite
 live private memory, user files, skills, or channel instructions with generic examples.

@@ -173,4 +173,9 @@ isolated state, not production. Windows unit verification uses WSL and
 `systemd-analyze`; `-SkipSystemdValidation` is an explicit test-only skip, not a pass.
 Regenerate changed bootstrap assets with
 [sync-cloud-init-assets.ps1](../scripts/sync-cloud-init-assets.ps1).
+The template owns shared desired-state settings. After changing them, run
+`python scripts/sync-quality-patch.py` to refresh the repository's migration
+patch; validation checks semantic freshness with `--check`. This command never
+targets a live config. The patch still contains owner placeholders and deliberate
+migration differences: review and personalize a separate copy before use.
 Repository checks are not live acceptance; follow [availability acceptance](availability-recovery.md#acceptance-and-remaining-boundaries).
