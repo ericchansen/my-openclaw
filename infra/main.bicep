@@ -333,6 +333,5 @@ output sshCommand string = 'ssh ${adminUsername}@${publicIp.properties.dnsSettin
 output keyVaultName string = keyVault.name
 output keyVaultUri string = keyVault.properties.vaultUri
 output logAnalyticsWorkspaceName string = monitoring.outputs.workspaceName
-output openClawContentTableName string = monitoring.outputs.contentTable
 output gatewayNote string = 'Gateway and OTLP remain loopback-only. Use an authenticated tunnel; private-network cutover is separate.'
 output vmPrincipalId string = vm.identity.principalId

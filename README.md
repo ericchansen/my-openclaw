@@ -21,7 +21,9 @@ not agent or task inference. There is no custom model catalog, alias, or routing
 - Existing channels, identities, approved family routing, credentials, and data are preserved.
 - Owner administration is separate from explicitly approved trusted-family sharing.
 - Non-family/default isolation requires separate agents/workspaces, not just session keys.
-- Current metadata telemetry and its collector are deployed dependencies; keep them.
+- Local metadata telemetry and its collector are deployed dependencies; keep them.
+  Azure Monitor receives only the bounded `local6` runtime-health feed; local
+  OpenTelemetry JSONL is intentionally not ingested into Log Analytics.
 - Future private-endpoint/NAT and public-IP cutover work is deferred, **not live**.
 
 See the [security model](docs/security-model.md) for trust boundaries and residual risks.

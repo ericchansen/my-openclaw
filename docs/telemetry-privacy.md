@@ -18,8 +18,6 @@ Official references:
 
 - [OpenClaw OpenTelemetry export](https://docs.openclaw.ai/gateway/opentelemetry)
 - [OpenTelemetry Collector configuration](https://opentelemetry.io/docs/collector/configuration/)
-- [Azure Monitor custom text logs](https://learn.microsoft.com/azure/azure-monitor/vm/data-collection-log-text)
-- [Log Analytics table retention](https://learn.microsoft.com/azure/azure-monitor/logs/data-retention-configure)
 
 ## Data paths
 
@@ -33,20 +31,16 @@ Official references:
   dropped marker.
 - Records without the sanitizer marker are dropped. Transform, filter, or
   exporter errors cannot bypass the pipeline into another exporter.
-- AMA reads only the two exact active collector-owned paths,
-  `/var/log/openclaw-telemetry/metadata.jsonl` and
-  `/var/log/openclaw-telemetry/content.jsonl`, and sends them to
-  `OpenClawContent_CL`. The DCR derives `TelemetryClass` only from the trusted
-  exact metadata/content file path, rejects any other path, and never matches
-  rotated JSONL files, so metadata remains separately queryable without
-  reingesting rotations.
-  The table has seven-day interactive and total retention, so archive retention
-  is zero. Existing bounded syslog health alerts remain the primary paging path.
+- Active and rotated JSONL stays local under `/var/log/openclaw-telemetry` with
+  seven-day, fourteen-backup, 8 MiB-per-file rotation limits. The Azure data
+  collection rule has no `logFiles` source and does not ingest either active or
+  rotated OpenTelemetry JSONL. Azure Monitor receives only bounded `local6`
+  runtime-health records used by the four health alerts.
 
 Pattern redaction cannot prove semantic PII removal. Sampled text that does not
-match a blocked pattern can remain. Treat the custom table as sensitive,
-restrict table-scope access, and do not use it as an audit or compliance record.
-Azure Monitor ingestion and query endpoints remain public outbound residuals.
+match a blocked pattern can remain. Treat local telemetry as sensitive and do
+not use it as an audit or compliance record. Azure Monitor ingestion and query
+endpoints remain public outbound residuals for the bounded health feed.
 
 ## Fail-closed content gate
 
@@ -85,7 +79,10 @@ granting write access to either the directory or marker.
 
 ## Azure Monitor Agent file access
 
-Provisioning installs POSIX ACL support, waits at most 180 seconds for exactly
+The current runtime package preserves the prior narrow AMA read ACL as a rollback
+compatibility measure, but the active DCR has no file-log source, so that local
+permission does not cause cloud ingestion. Provisioning installs POSIX ACL
+support, waits at most 180 seconds for exactly
 one `/opt/microsoft/azuremonitoragent/bin/mdsd` process, verifies its executable
 path, and resolves its actual OS account. AMA releases can use different
 accounts; this deployment currently runs `mdsd` as `syslog`. The collector
@@ -151,39 +148,32 @@ The test sends token, email, IP, prompt, command, and non-allowlisted canaries i
 independent attributes. It requires each specific redaction marker and fails if
 any raw canary or the non-allowlisted key reaches the file.
 
-Verify table retention and role assignments:
+Verify that Azure collects health Syslog but not local telemetry files:
 
 ```bash
-table_id="$(az monitor log-analytics workspace table show \
-  --resource-group rg-openclaw --workspace-name '<workspace>' \
-  --name OpenClawContent_CL --query id --output tsv)"
-az monitor log-analytics workspace table show \
-  --resource-group rg-openclaw --workspace-name '<workspace>' \
-  --name OpenClawContent_CL \
-  --query '{interactive:retentionInDays,total:totalRetentionInDays,plan:plan}'
-az role assignment list --scope "$table_id" --output table
+az monitor data-collection rule show \
+  --resource-group rg-openclaw \
+  --name '<dcr-name>' \
+  --query '{logFiles:dataSources.logFiles,streams:streamDeclarations,dataFlows:dataFlows}'
 ```
 
-Grant the smallest custom role at `table_id`; do not grant broad workspace
-query access merely to read content. Confirm an approved principal can run the
-following and an unapproved principal cannot:
+The readback must show no `logFiles`, no custom stream declaration, and only the
+`Microsoft-Syslog` data flow. Confirm the retained signal continues arriving:
 
 ```kusto
-OpenClawContent_CL
+Syslog
 | where TimeGenerated > ago(1h)
-| summarize Records=count(), Oldest=min(TimeGenerated), Newest=max(TimeGenerated) by TelemetryClass
+| where Facility == "local6" and ProcessName == "openclaw-runtime-health-probe"
+| summarize Records=count(), Oldest=min(TimeGenerated), Newest=max(TimeGenerated)
 ```
 
-Check expiration:
+An existing `OpenClawContent_CL` table may remain after an incremental
+deployment. It is intentionally left to age out under its seven-day retention;
+its presence alone does not create ingestion charges. Confirm no new rows arrive
+after the DCR update:
 
 ```kusto
 OpenClawContent_CL
-| summarize Oldest=min(TimeGenerated), Newest=max(TimeGenerated), Records=count()
-| extend OldestAge=now()-Oldest
+| where TimeGenerated > ago(30m)
+| summarize Records=count(), Newest=max(TimeGenerated)
 ```
-
-For urgent deletion, disable content first, delete local matching files, then
-use the Log Analytics purge API with a narrow time/filter predicate and the
-Data Purger permission. Purge is asynchronous and exceptional; seven-day table
-retention remains the normal deletion control. Record the purge request ID, not
-matching content.

@@ -9,7 +9,6 @@ var logAnalyticsName = 'log-openclaw-${uniqueString(resourceGroup().id)}'
 var dataCollectionRuleName = 'dcr-openclaw-${uniqueString(resourceGroup().id)}'
 var diagnosticsActionGroupName = 'ag-openclaw-diagnostics'
 var escalationActionGroupName = 'ag-openclaw-escalation'
-var contentTableName = 'OpenClawContent_CL'
 
 resource vm 'Microsoft.Compute/virtualMachines@2024-07-01' existing = {
   name: vmName
@@ -31,67 +30,10 @@ resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
   }
 }
 
-resource openClawContentTable 'Microsoft.OperationalInsights/workspaces/tables@2025-02-01' = {
-  parent: logAnalytics
-  name: contentTableName
-  properties: {
-    plan: 'Analytics'
-    retentionInDays: 7
-    totalRetentionInDays: 7
-    schema: {
-      name: contentTableName
-      columns: [
-        {
-          name: 'TimeGenerated'
-          type: 'dateTime'
-        }
-        {
-          name: 'RawData'
-          type: 'string'
-        }
-        {
-          name: 'Computer'
-          type: 'string'
-        }
-        {
-          name: 'FilePath'
-          type: 'string'
-        }
-        {
-          name: 'TelemetryClass'
-          type: 'string'
-        }
-      ]
-    }
-  }
-}
-
 resource dataCollectionRule 'Microsoft.Insights/dataCollectionRules@2023-03-11' = {
   name: dataCollectionRuleName
   location: location
   properties: {
-    streamDeclarations: {
-      'Custom-OpenClawContent_CL': {
-        columns: [
-          {
-            name: 'TimeGenerated'
-            type: 'datetime'
-          }
-          {
-            name: 'RawData'
-            type: 'string'
-          }
-          {
-            name: 'Computer'
-            type: 'string'
-          }
-          {
-            name: 'FilePath'
-            type: 'string'
-          }
-        ]
-      }
-    }
     dataSources: {
       syslog: [
         {
@@ -112,24 +54,6 @@ resource dataCollectionRule 'Microsoft.Insights/dataCollectionRules@2023-03-11' 
           ]
         }
       ]
-      logFiles: [
-        {
-          name: 'openclaw-sanitized-otel'
-          streams: [
-            'Custom-OpenClawContent_CL'
-          ]
-          filePatterns: [
-            '/var/log/openclaw-telemetry/metadata.jsonl'
-            '/var/log/openclaw-telemetry/content.jsonl'
-          ]
-          format: 'text'
-          settings: {
-            text: {
-              recordStartTimestampFormat: 'ISO 8601'
-            }
-          }
-        }
-      ]
     }
     destinations: {
       logAnalytics: [
@@ -148,21 +72,8 @@ resource dataCollectionRule 'Microsoft.Insights/dataCollectionRules@2023-03-11' 
           'openclaw-log-analytics'
         ]
       }
-      {
-        streams: [
-          'Custom-OpenClawContent_CL'
-        ]
-        destinations: [
-          'openclaw-log-analytics'
-        ]
-        transformKql: 'source | extend TelemetryClass = case(FilePath == "/var/log/openclaw-telemetry/content.jsonl", "sampled-redacted-content", FilePath == "/var/log/openclaw-telemetry/metadata.jsonl", "metadata", "invalid") | where TelemetryClass != "invalid" | project TimeGenerated, RawData, Computer, FilePath, TelemetryClass'
-        outputStream: 'Custom-OpenClawContent_CL'
-      }
     ]
   }
-  dependsOn: [
-    openClawContentTable
-  ]
 }
 
 resource monitorAgent 'Microsoft.Compute/virtualMachines/extensions@2024-07-01' = {
@@ -183,7 +94,7 @@ resource dataCollectionAssociation 'Microsoft.Insights/dataCollectionRuleAssocia
   name: 'openclaw-runtime-health'
   properties: {
     dataCollectionRuleId: dataCollectionRule.id
-    description: 'Collect bounded local6 health plus locally sanitized OpenTelemetry JSONL.'
+    description: 'Collect only bounded local6 runtime-health records. OpenTelemetry JSONL remains local.'
   }
   dependsOn: [
     monitorAgent
@@ -387,4 +298,3 @@ resource vmAvailabilityAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
 }
 
 output workspaceName string = logAnalytics.name
-output contentTable string = contentTableName
