@@ -24,6 +24,39 @@ class QualityPatchTests(unittest.TestCase):
         self.assertIsNone(expected["agents"]["defaults"]["sandbox"]["docker"]["ulimits"]["nproc"])
         self.assertEqual(expected["hooks"]["allowedAgentIds"], ["main"])
 
+    def test_browser_uses_defaults_and_removes_previous_overrides(self):
+        self.assertEqual(self.template["browser"], {"headless": True})
+        browser = MODULE.quality_patch(self.template)["browser"]
+        self.assertTrue(browser["headless"])
+        for key in (
+            "enabled", "allowSystemProfileImport", "evaluateEnabled", "noSandbox",
+            "attachOnly", "defaultProfile", "snapshotDefaults", "tabCleanup",
+        ):
+            self.assertIn(key, browser)
+            self.assertIsNone(browser[key])
+        self.assertEqual(browser["extensionRelay"], {"allowLegacyAuth": None})
+        self.assertEqual(browser["ssrfPolicy"], {
+            "dangerouslyAllowPrivateNetwork": None,
+            "allowRfc2544BenchmarkRange": None,
+            "allowIpv6UniqueLocalRange": None,
+        })
+        self.assertNotIn("profiles", browser)
+
+    def test_migration_preserves_personal_paths_and_inherits_delegation_behavior(self):
+        result = MODULE.quality_patch(self.template)
+        self.assertEqual(set(result["agents"]["entries"]),
+                         {"main", "orchestrator", "fitness", "healthcheck"})
+        self.assertNotIn("allow", result["tools"]["agentToAgent"])
+        self.assertNotIn("visibility", result["tools"]["sessions"])
+        self.assertNotIn("deny", result["tools"]["subagents"]["tools"])
+        self.assertNotIn("delegationMode", self.template["agents"]["defaults"]["subagents"])
+        self.assertIsNone(result["agents"]["defaults"]["subagents"]["delegationMode"])
+        for agent_id in ("main", "orchestrator", "fitness"):
+            agent = result["agents"]["entries"][agent_id]
+            self.assertNotIn("identity", agent)
+            self.assertNotIn("workspace", agent)
+            self.assertEqual(agent["subagents"], {"delegationMode": None})
+
     def test_fresh_install_fields_do_not_enter_migration_patch(self):
         result = MODULE.quality_patch(self.template)
         for key in ("channels", "bindings", "secrets", "auth", "mcp", "messages"):

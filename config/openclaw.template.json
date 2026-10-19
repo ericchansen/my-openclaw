@@ -1,28 +1,6 @@
 {
   "browser": {
-    "enabled": true,
-    "allowSystemProfileImport": false,
-    "evaluateEnabled": false,
-    "headless": true,
-    "noSandbox": false,
-    "attachOnly": false,
-    "defaultProfile": "openclaw",
-    "snapshotDefaults": {
-      "mode": "efficient"
-    },
-    "tabCleanup": {
-      "enabled": true
-    },
-    "extensionRelay": {
-      "allowLegacyAuth": false
-    },
-    "ssrfPolicy": {
-      "dangerouslyAllowPrivateNetwork": false,
-      "allowRfc2544BenchmarkRange": false,
-      "allowIpv6UniqueLocalRange": false,
-      "allowedHostnames": [],
-      "blockedHostnames": []
-    }
+    "headless": true
   },
   "update": {
     "channel": "stable",
@@ -125,7 +103,6 @@
         }
       },
       "subagents": {
-        "delegationMode": "prefer",
         "maxConcurrent": 2,
         "maxSpawnDepth": 2,
         "maxChildrenPerAgent": 3,
@@ -196,13 +173,24 @@
         }
       },
       "main": {
+        "workspace": "/home/azureuser/.openclaw/workspace",
         "identity": {
           "name": "YOUR_AGENT_NAME",
           "emoji": "🤖"
         },
         "sandbox": {
+          "mode": "off",
           "scope": "agent",
           "sessionToolsVisibility": "all"
+        },
+        "tools": {
+          "profile": "full",
+          "exec": {"mode": "full", "strictInlineEval": false, "applyPatch": {"workspaceOnly": false}},
+          "fs": {"workspaceOnly": false},
+          "elevated": {"enabled": true}
+        },
+        "subagents": {
+          "allowAgents": ["main", "orchestrator", "fitness"]
         },
         "memory": {
           "search": {
@@ -219,30 +207,30 @@
       },
       "orchestrator": {
         "workspace": "/home/azureuser/.openclaw/workspace",
-        "thinkingDefault": "high",
-        "identity": {
-          "name": "Orchestrator",
-          "emoji": "🎯"
-        },
-        "sandbox": {
-          "scope": "agent",
-          "mode": "all"
-        },
-        "memory": {
-          "search": {
-            "rememberAcrossConversations": false,
-            "sources": [
-              "memory"
-            ]
-          }
-        },
+        "identity": {"name": "Orchestrator"},
+        "sandbox": {"mode": "off", "scope": "agent"},
         "tools": {
-          "elevated": {
-            "enabled": false
-          },
-          "fs": {
-            "workspaceOnly": true
-          }
+          "profile": "full",
+          "exec": {"mode": "full", "strictInlineEval": false, "applyPatch": {"workspaceOnly": false}},
+          "fs": {"workspaceOnly": false},
+          "elevated": {"enabled": true}
+        },
+        "subagents": {
+          "allowAgents": ["main", "orchestrator", "fitness"]
+        }
+      },
+      "fitness": {
+        "workspace": "/home/azureuser/.openclaw/workspace-fitness",
+        "identity": {"name": "Fitness"},
+        "sandbox": {"mode": "off", "scope": "agent"},
+        "tools": {
+          "profile": "full",
+          "exec": {"mode": "full", "strictInlineEval": false, "applyPatch": {"workspaceOnly": false}},
+          "fs": {"workspaceOnly": false},
+          "elevated": {"enabled": true}
+        },
+        "subagents": {
+          "allowAgents": ["main", "orchestrator", "fitness"]
         }
       }
     }
@@ -368,7 +356,8 @@
       "enabled": true,
       "allow": [
         "main",
-        "orchestrator"
+        "orchestrator",
+        "fitness"
       ]
     },
     "updatePlan": true,
@@ -379,14 +368,11 @@
       "maxSearchLimit": 20
     },
     "sessions": {
-      "visibility": "tree"
+      "visibility": "all"
     },
     "subagents": {
       "tools": {
-        "deny": [
-          "gateway",
-          "nodes"
-        ]
+        "deny": []
       }
     },
     "sandbox": {
@@ -422,7 +408,10 @@
     }
   },
   "messages": {
-    "ackReactionScope": "group-mentions"
+    "ackReactionScope": "group-mentions",
+    "groupChat": {
+      "visibleReplies": "automatic"
+    }
   },
   "commands": {
     "native": "auto",

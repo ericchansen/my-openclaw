@@ -1,181 +1,108 @@
-# Operations and rollback
+# Operate this installation
 
-Use the exact official release and integrity values in
-[runtime-versions.json](../config/runtime-versions.json), currently OpenClaw 2026.10.3.
-OpenClaw owns heartbeat through its documented defaults; this repository does not
-override heartbeat behavior. Systemd does not own heartbeat. Systemd owns the
-Gateway, the fifteen-minute runtime health probe, the snapshot timer, and the
-deployed OTel collector. Use standard OpenClaw status and Doctor mechanisms for
-operator-led diagnostics; do not add a duplicate recurring Doctor schedule.
+The Gateway runs as `/etc/systemd/system/openclaw-gateway.service`, under
+`azureuser`, rather than an OpenClaw-managed user service. The repository also
+installs a fifteen-minute runtime health probe, daily snapshot timer, and local
+OpenTelemetry collector. Software pins are in
+[runtime-versions.json](../config/runtime-versions.json).
 
-## Health and incidents
+## Diagnostics
 
-Run diagnostics as the configured runtime user; keep raw output private:
+On the VM:
 
 ```bash
 curl --fail http://127.0.0.1:18789/health
-openclaw config validate
-openclaw doctor --lint --json
-openclaw channels status --probe --json
-openclaw security audit --json
-openclaw secrets audit --allow-exec --check --json
-openclaw automations status --json
-openclaw automations list --all --json
-openclaw tasks audit --json
-openclaw tasks list --runtime subagent --json
 systemctl status openclaw-gateway openclaw-otel-collector \
-  openclaw-vm-snapshot.timer openclaw-runtime-health-probe.timer
+  openclaw-runtime-health-probe.timer openclaw-vm-snapshot.timer
+sudo journalctl -u openclaw-gateway --since "30 minutes ago" --no-pager
 ```
 
-Use `/health`, not a model-backed completion route. A healthy endpoint is not proof
-of a working conversation: force the [application canary](availability-recovery.md#application-canary)
-and verify the affected real channel/tool. Check VM availability and capacity,
-inspect `journalctl -u openclaw-gateway --no-pager`, and preserve private diagnostics
-before restart. Inspect task/job history before retrying; never replay personal jobs
-merely to clear an alert.
+The runtime probe measures Gateway service/HTTP health, host capacity, and disk
+usage. It does not run a model or test channel delivery.
 
-The [runtime health probe](../scripts/openclaw-runtime-health-probe.sh) checks only
-the Gateway endpoint/service, memory/load capacity, and root-disk usage. It emits
-one `runtime_health_probe` record and exits nonzero when the Gateway or measured
-host capacity is unhealthy. It never runs Doctor, task, channel, agent, security,
-or other extended diagnostic work.
+For an operator-led model/tool check, the installed internal healthcheck uses
+an isolated workspace and sandboxed exec, with no browser, private memory, or
+message delivery:
 
-Diagnostic contacts receive runtime-probe unhealthy/missing, one disk-pressure,
-and one capacity-pressure alert. Escalation contacts receive only the sustained
-Azure VM-availability outage and its native recovery notification. Budget
-recipients remain separate. Contact arrays are declarative parameters, not
-discovered from existing groups, and empty arrays explicitly disable that email
-route. Both infrastructure modes use the
-[shared monitoring module](../infra/monitoring.bicep).
+```bash
+python3 /usr/local/libexec/openclaw-availability-check \
+  --status-file /var/lib/openclaw-runtime/availability.json --force
+```
 
-## Safe configuration changes
+For channel, browser, automation, and model diagnostics use the
+[OpenClaw troubleshooting reference](https://docs.openclaw.ai/gateway/troubleshooting).
+Verify the affected operation in its real conversation; the internal check
+does not exercise personal workflows. Diagnostic output can contain private data.
 
-1. Locate the active file with `openclaw config file`; preserve it and its ownership.
-2. Retain the reviewed Git source/IaC commit and create a succeeded current-OS-disk snapshot
-   using [the recovery procedure](backup-restore.md#pre-change-recovery-point).
-3. Inspect installed help/schema and prepare the smallest reviewed patch.
-4. Dry-run with `openclaw config patch --file <patch> --dry-run`, then apply through
-   the supported CLI and run `openclaw config validate` before restart.
-5. Change one major variable at a time; compare native automation status/list
-   before and after, then verify the originating conversation, affected tools,
-   scheduled execution, and forced canary after activation.
+Diagnostic notification recipients get probe, disk, and capacity alerts.
+Escalation recipients get sustained VM-availability outage/recovery notifications.
+The subscription budget has its own recipient set.
 
-Do not replace live channels with a template. Review identities, owner command
-grants, agent routing, plugin allowlist additions, and model overrides separately.
-Preserve existing approved family configuration; future identity/sharing changes
-need explicit review, not an implicit grant from this upgrade.
-All task inference inherits the native GPT-6.1 Sol default without fallbacks or per-task model overrides. The empty utilityModel disables automatic small-model derivation.
+## Configuration
 
-### Trusted operator blocked by a model-facing tool
+The active file is reported by `openclaw config file`. The
+[template](../config/openclaw.template.json) describes my setup, with placeholders
+for private identifiers and credentials.
+Use [OpenClaw's configuration tools](https://docs.openclaw.ai/cli/config) for
+validated edits rather than replacing an existing file.
 
-For `strict inline-eval mode requires reviewer or explicit approval`, inspect
-both the global and active agent's `tools.exec.strictInlineEval`. `mode: full`
-does not disable that independent gate. The reviewed trusted-operator overlay
-sets it to `false` only for `main`, `orchestrator`, and `fitness`; keep the global
-and isolated-agent policies intact. Use the installed schema to confirm hot-reload
-support, then verify harmless inline interpreter execution through the actual
-agent tool rather than direct SSH. Old closed approval requests are not resumed
-or approved by changing the policy.
+For repository-wide migration changes, personalize a copy of
+`config/openclaw-quality.patch.json` first: it contains owner placeholders and
+changes beyond any individual feature. It preserves existing agent identities,
+workspace paths, and delegation target lists. Its browser and delegation-mode
+`null` values remove overrides so the installed runtime supplies those defaults.
 
-First verify the active agent's full host exec policy and the requesting sender's
-reviewed operator grant. In the opt-in production profile, use the existing authenticated host CLI for
-cross-conversation jobs. A native
-`automations` ownership denial or the Copilot delegated-expert transcript-target
-error does not establish that this independent administration path is unavailable.
-The [security model](security-model.md#administration-from-trusted-conversations)
-documents the distinction and limits.
+## Runtime updates
 
-Preserve the job's stable ID, attribution, timing, destination, and future repeats.
-Read back narrow edits; for deterministic checks, prefer canonical saved records
-and an existing command checker over a model reading another conversation.
-Prove administrative edits with a disposable disabled, no-delivery job rather
-than replaying personal reminders. Verify the affected channel session separately;
-an operator-injected diagnostic is not proof of real human-message ingress.
+This custom system service uses [apply-runtime.ps1](../scripts/apply-runtime.ps1)
+instead of OpenClaw's managed user-service update handoff.
+Create and independently verify a current OS-disk
+[recovery snapshot](backup-restore.md#create-and-verify-a-snapshot), then run
+from PowerShell on your computer:
 
-### Retiring unused agents
+```powershell
+.\scripts\apply-runtime.ps1 `
+  -VmHost "<runtime-user>@<verified-host>" `
+  -ResourceGroupName "<resource-group>" `
+  -VerifiedSnapshotId "<succeeded-current-os-disk-snapshot-resource-id>" `
+  -KeyVaultName "<vault-name>"
+```
 
-After explicit operator approval, inspect the exact agent's routes, delegation
-and credential ownership, automations, active tasks, and workspace/state paths.
-No chat bindings does not mean no scheduled work: legacy agents can still have
-enabled skill-review jobs and disabled heartbeat jobs. Preserve personal jobs
-and active assistants; retire only housekeeping owned by the removed agents.
+The updater verifies SSH identity and recovery evidence, stages root-owned
+assets, and serializes maintenance through `/etc/openclaw/maintenance.lock`.
+It prepares dependencies before stopping the Gateway, pauses the probe/snapshot
+timers, then updates, validates, and starts the service. Failures after mutation
+leave it stopped for operator recovery; there is no automatic package/state
+rollback. Workspace templates are not applied.
 
-Follow the pre-change recovery procedure, including a succeeded current-OS-disk
-snapshot and the reviewed Git source/IaC commit before removing canonical history.
-Inspect the installed `agents delete --help` and use
-`openclaw agents delete <reviewed-agent-id> --force --json` against the reachable,
-authenticated Gateway. The pinned supported deletion flow removes associated
-jobs and prunes owned workspace/state while protecting shared paths and
-credential owners. Do not substitute config-only removal or hand-edit SQLite.
+The Gateway uses `Restart=always` with a thirty-second delay. An explicit stop
+stays stopped; configuration exit status 78 prevents invalid-config restart loops.
+If an update fails, inspect its recorded recovery artifacts and service journal
+before starting again. Configuration, package, and disk rollback are different
+[recovery layers](backup-restore.md).
 
-Inspect deletion results for failed paths, failed session purges, retained shared
-workspaces, or skipped cron cleanup; those are incomplete retirement, not success.
-Verify the remaining roster, exact expected job removals, unchanged surviving
-jobs/configuration, Gateway health, and active channel routes. Keep recovery
-artifacts private and never prune the restricted healthcheck as legacy.
+## Infrastructure-only updates
 
-## Stable updates
+Existing-host deployment updates monitoring and snapshot-role prerequisites
+without replacing the VM, runtime, or networking:
 
-Existing-host [infrastructure deployment](../deploy.ps1) is snapshot-guarded and
-refreshes monitoring only; it does not update OpenClaw or mutate live networking.
-Inspect `openclaw update status --json` and `openclaw update --dry-run --json`.
-Managed `openclaw update` / `gateway update.run` handoff requires a **user-scope**
-systemd unit and is incompatible with this system's
-`/etc/systemd/system/openclaw-gateway.service`. Agents on the host must not
-refuse authorized updates for that reason, migrate to a user unit, or wait for
-a `gateway` tool. Use [apply-runtime.ps1](../scripts/apply-runtime.ps1) for active
-custom-systemd hosts; it invokes [openclaw-update](../scripts/openclaw-update.sh)
-with recovery evidence. Never substitute a bare global npm update, mutable tag,
-or onboarding.
-Runtime apply streams the freshness-checked bundle directly to a root process,
-verifies its SHA-256, and stages regular files beneath root-owned, non-writable
-ancestors. The private staging directory is retained for delayed installer
-callbacks and recovery; runtime-user home directories are never execution sources.
+```powershell
+.\deploy.ps1 -SkipCustomData `
+  -VerifiedSnapshotId "<succeeded-current-os-disk-snapshot-resource-id>" `
+  -DiagnosticsContactEmails @("<diagnostics-contact>") `
+  -EscalationContactEmails @("<escalation-contact>")
+```
 
-The updater checks exact package pins and uses the stable root-owned
-`/etc/openclaw/maintenance.lock` for update serialization. Snapshot work uses its
-own snapshot lock; the updater pauses the probe and snapshot timers and drains
-their services before mutation. Never delete or replace the maintenance-lock
-inode or run an update unlocked when it is missing or unsafe.
+Both recipient arrays are desired-state inputs; `@()` explicitly declares none.
+Subscription budget recipients use the separate subscription deployment path.
 
-Only declared OpenClaw timers are paused. Existing snapshot/probe work and visible tasks
-drain boundedly; an in-progress snapshot is not killed. Pinned sandbox-image
-provisioning runs before Gateway shutdown. A pre-shutdown failure leaves the
-working Gateway unchanged and restores previously active timers.
+## Repository validation
 
-Package mutation, update repair, config validation, and Doctor run while stopped.
-The stopped-runtime installer applies assets under the same lock. Start once,
-prove readiness and the exact running version, then resume timers after lock
-release. Failure after mutation deliberately leaves Gateway and timers stopped
-for operator recovery: **there is no automatic package/state rollback**.
-Do not restart Docker or unrelated host services; recreate only OpenClaw-owned
-containers in an approved window.
+```powershell
+pwsh scripts/test-repository.ps1
+```
 
-## Rollback and service failures
-
-For config/unit rollback, restore the exact pre-change files and ownership,
-reload systemd if units changed, validate, and start once. Recheck real channels,
-tools, jobs, and timers. Package, state, and disk recovery are separate
-[rollback layers](backup-restore.md#rollback-layers); a downgrade does not undo a
-state migration.
-
-The [Gateway unit](../config/openclaw-gateway.service) uses `Restart=always` because
-a config reload can exit successfully. Exit 78 blocks invalid-config restart loops;
-an explicit operator stop stays stopped. Do not replace this with `on-failure`.
-Keep the deployed metadata collector and [launcher](../scripts/openclaw-gateway-launch.py)
-guards intact; inspect collector readiness rather than removing telemetry to start.
-Future private-network/NAT cutover is deferred, not an incident-recovery prerequisite.
-
-## Validation
-
-Run `pwsh scripts/test-repository.ps1` from the repository. Exact-runtime checks use
-isolated state, not production. Windows unit verification uses WSL and
-`systemd-analyze`; `-SkipSystemdValidation` is an explicit test-only skip, not a pass.
-Regenerate changed bootstrap assets with
-[sync-cloud-init-assets.ps1](../scripts/sync-cloud-init-assets.ps1).
-The template owns shared desired-state settings. After changing them, run
-`python scripts/sync-quality-patch.py` to refresh the repository's migration
-patch; validation checks semantic freshness with `--check`. This command never
-targets a live config. The patch still contains owner placeholders and deliberate
-migration differences: review and personalize a separate copy before use.
-Repository checks are not live acceptance; follow [availability acceptance](availability-recovery.md#acceptance-and-remaining-boundaries).
+Windows validation uses WSL for Linux checks. Exact-runtime tests use isolated
+state, not the running installation. After editing the template, regenerate
+the migration patch with `python scripts/sync-quality-patch.py`. After changing
+bundled runtime assets, run `scripts/sync-cloud-init-assets.ps1`.
