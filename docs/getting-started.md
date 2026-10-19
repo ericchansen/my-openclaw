@@ -13,7 +13,7 @@ Your Azure account needs deployment and role-assignment permissions at the
 resource-group and subscription scopes.
 
 The infrastructure defaults are Ubuntu ARM64 in `centralus`, a
-`Standard_D4ps_v6` VM (4 vCPUs, 16 GiB RAM), a 64 GiB OS disk, public bootstrap
+`Standard_E2ps_v6` VM (2 vCPUs, 16 GiB RAM), a 64 GiB OS disk, public bootstrap
 SSH, Key Vault, Azure Monitor, and daily incremental disk snapshots retaining
 three recovery points. Check regional availability, quota, and
 [costs](https://azure.microsoft.com/pricing/calculator/).

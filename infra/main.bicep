@@ -11,8 +11,8 @@ param adminUsername string = 'azureuser'
 @secure()
 param sshPublicKey string
 
-@description('New-VM size; default ARM64 capacity profile has 4 vCPUs, 16 GiB RAM, and no local temporary disk')
-param vmSize string = 'Standard_D4ps_v6'
+@description('New-VM size; default ARM64 capacity profile has 2 vCPUs, 16 GiB RAM, and no local temporary disk')
+param vmSize string = 'Standard_E2ps_v6'
 
 @description('OS disk size in GiB')
 @minValue(30)
