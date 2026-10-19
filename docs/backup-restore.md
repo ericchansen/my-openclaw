@@ -1,42 +1,66 @@
-# Backup and restore readiness
+# Azure snapshot recovery
 
-## Pre-change recovery point
+This installation creates incremental managed OS-disk snapshots daily at
+05:30 UTC with up to fifteen minutes of fixed jitter. It retains the newest
+three succeeded snapshots in its own `openclaw-auto-daily-YYYYMMDDTHHMMSSZ`
+namespace. These are crash-consistent disk recovery points, not application
+exports. There is no deployed Blob archive or separate SQLite backup schedule.
 
-Before an existing-host infrastructure or runtime change, retain the reviewed
-source/IaC commit and create a succeeded snapshot of the current VM OS disk.
-Pass that exact snapshot resource ID to the guarded deployment or runtime
-update. Do not use a Blob backup service or invent an application-backup
-schedule.
+## Create and verify a snapshot
 
-The supported recovery mechanism is the Azure managed OS-disk snapshot timer,
-`openclaw-vm-snapshot.timer`, scheduled daily with a fixed 05:30 UTC anchor and
-bounded jitter. The service discovers the current VM OS disk at runtime, creates
-an incremental snapshot, independently reads it back, verifies `Succeeded`, the
-source disk, incrementality, ownership tags, and retains exactly the newest
-three names in its own `openclaw-auto-daily-YYYYMMDDTHHMMSSZ` namespace.
+Before changing infrastructure or runtime, record the repository commit and,
+on the VM, run:
 
-Snapshots are crash-consistent whole-OS-disk recovery points. A non-destructive
-restore-readiness proof consists of inspecting the snapshot metadata and source
-OS-disk ID, confirming `Succeeded`/incremental/tags, and recording the exact
-restore drill: create a managed disk from a selected snapshot in the same
-region, attach it to a disposable test VM or recovery VM, validate the expected
-filesystem and OpenClaw configuration read-only, then discard only the test
-resources. Never replace or boot the production VM as part of routine proof.
+```bash
+sudo systemctl start openclaw-vm-snapshot.service
+sudo journalctl -u openclaw-vm-snapshot.service -n 30 --no-pager
+sudo cat /var/lib/openclaw-vm-snapshot/last-created.json
+```
 
-Application-level Blob archive backup is not deployed. Small OpenClaw config
-`.bak*` undo files remain local bounded safety aids and are not a backup system.
+From an independently authenticated Azure CLI on your computer, compare the
+current OS disk with the snapshot's source:
 
-## Rollback layers
+```powershell
+az vm show -g "<resource-group>" -n "<vm-name>" `
+  --query storageProfile.osDisk.managedDisk.id -o tsv
+az snapshot show --ids "<snapshot-resource-id>" `
+  --query "{state:provisioningState,incremental:incremental,source:creationData.sourceResourceId,tags:tags}" -o json
+```
 
-- **Configuration and IaC:** restore the reviewed Git commit or exact staged
-  runtime files, then validate before restarting the Gateway.
-- **Package/runtime:** use the guarded updater recovery evidence; it leaves the
-  Gateway stopped after a failed validation rather than guessing a rollback.
-- **Machine state:** create a managed disk from a selected succeeded snapshot
-  in the same region, attach it to a disposable recovery VM, validate the
-  expected filesystem and OpenClaw configuration read-only, and replace or
-  restore production only through an explicit reviewed recovery operation.
+Require `Succeeded`, `incremental: true`, the current OS-disk source, and ownership
+tags `purpose=openclaw-automated-backup`, `createdBy=openclaw-vm-snapshot`,
+`retention=3`. Pass that exact snapshot resource ID to the update command.
 
-Snapshots are crash-consistent recovery points, not a substitute for testing a
-restore. No automated SQLite or Blob backup service is part of the declared
-runtime.
+## Recover to a separate disk
+
+Select a verified snapshot and create a new disk in its region:
+
+```powershell
+az disk create --resource-group "<recovery-resource-group>" `
+  --name "<new-recovery-disk-name>" --location "<snapshot-region>" `
+  --source "<snapshot-resource-id>" --query id -o tsv
+az vm disk attach --resource-group "<recovery-resource-group>" `
+  --vm-name "<recovery-vm-name>" --name "<new-recovery-disk-resource-id>"
+```
+
+Use a separate recovery VM, not the running OpenClaw VM. Follow
+[Azure's Linux disk recovery procedure](https://learn.microsoft.com/troubleshoot/azure/virtual-machines/linux/troubleshoot-recovery-disks-portal-linux)
+to identify and inspect the attached filesystem read-only. Check:
+
+- `/home/azureuser/.openclaw` for configuration, agent state, and workspace data;
+- `/etc/openclaw` and `/etc/systemd/system/openclaw-*` for deployed service settings;
+- package versions against the repository commit recorded with the snapshot.
+
+The recovered disk contains credentials and private conversations. Keep access
+restricted. Replacing production's OS disk or booting the recovered installation
+is a separate cutover: stop competing channel/scheduler instances and verify the
+intended disk before switching. A read-only inspection does not itself restore service.
+
+## Other rollback layers
+
+Configuration/unit rollback restores the specific previous files and ownership,
+validates configuration, and restarts the affected service. Package rollback
+must account for state/schema changes; downgrading a package does not undo them.
+Whole-disk recovery is the fallback when files and runtime state need to move
+together. Native OpenClaw export/import operations are documented
+[upstream](https://docs.openclaw.ai/cli/backup).

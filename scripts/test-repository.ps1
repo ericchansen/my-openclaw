@@ -86,9 +86,6 @@ Invoke-Check "Manifest and configuration invariants" {
         $invariants = @{
             "update.channel" = "stable"
             "update.auto.enabled" = $false
-            "browser.noSandbox" = $false
-            "browser.allowSystemProfileImport" = $false
-            "browser.ssrfPolicy.dangerouslyAllowPrivateNetwork" = $false
             "agents.defaults.sandbox.backend" = "docker"
             "agents.defaults.sandbox.scope" = "session"
             "agents.defaults.sandbox.docker.readOnlyRoot" = $true
@@ -97,7 +94,6 @@ Invoke-Check "Manifest and configuration invariants" {
             "agents.defaults.sandbox.browser.autoStart" = $false
             "tools.exec.host" = "auto"
             "tools.exec.strictInlineEval" = $true
-            "tools.sessions.visibility" = "tree"
             "tools.toolSearch.enabled" = $false
             "diagnostics.otel.captureContent" = $false
         }
@@ -268,10 +264,45 @@ Invoke-Check "Exact official CLI, migration and recovery contracts" {
             }
             $config.security.installPolicy.exec.command = $safeCommand
             $config.security.installPolicy.exec.trustedDirs = @($safeDir)
-            $config.agents.defaults.sandbox.docker.ulimits.Remove("nproc")
             $env:OPENCLAW_CONFIG_PATH = Join-Path $scratch $name
             $config | ConvertTo-Json -Depth 100 | Set-Content $env:OPENCLAW_CONFIG_PATH
-            Assert-True (Invoke-Cli -Arguments @("config", "validate", "--json")).valid "Invalid $name."
+            if ($name -eq "openclaw.template.json") {
+                Assert-True (Invoke-Cli -Arguments @("config", "validate", "--json")).valid "Invalid $name."
+            }
+        }
+        $env:OPENCLAW_CONFIG_PATH = Join-Path $scratch "personal-migration.json"
+        $prior = Get-Content (Join-Path $scratch "openclaw.template.json") -Raw |
+            ConvertFrom-Json -AsHashtable -Depth 100
+        $prior.browser.evaluateEnabled = $false
+        $prior.browser.ssrfPolicy = @{dangerouslyAllowPrivateNetwork=$false; allowedHostnames=@("example.com")}
+        $prior.agents.defaults.subagents.delegationMode = "prefer"
+        $prior.agents.defaults.sandbox.docker.ulimits.nproc = "256:512"
+        foreach ($agent in @("main", "orchestrator", "fitness")) {
+            $prior.agents.entries[$agent].subagents.delegationMode = "prefer"
+        }
+        $prior | ConvertTo-Json -Depth 100 | Set-Content $env:OPENCLAW_CONFIG_PATH
+        $migrationPatch = Join-Path $scratch "openclaw-quality.patch.json"
+        Assert-True (Invoke-Cli -Arguments @(
+            "config", "patch", "--file", $migrationPatch, "--dry-run", "--json")).ok "Invalid migration patch."
+        Invoke-Cli -Arguments @("config", "patch", "--file", $migrationPatch) -Text | Out-Null
+        Assert-True (Invoke-Cli -Arguments @("config", "validate", "--json")).valid "Invalid personal configuration."
+        $combined = Get-Content $env:OPENCLAW_CONFIG_PATH -Raw | ConvertFrom-Json -AsHashtable -Depth 100
+        Assert-True (-not $combined.browser.ContainsKey("evaluateEnabled") -and
+            -not $combined.browser.ssrfPolicy.ContainsKey("dangerouslyAllowPrivateNetwork") -and
+            $combined.browser.ssrfPolicy.allowedHostnames -join "," -eq "example.com") (
+            "Migration failed to remove browser overrides or preserve hostname exceptions."
+        )
+        Assert-True (-not $combined.agents.defaults.subagents.ContainsKey("delegationMode") -and
+            -not $combined.agents.defaults.sandbox.docker.ulimits.ContainsKey("nproc")) (
+            "Migration retained a legacy delegation preference or shared-UID process limit."
+        )
+        Assert-True (($combined.agents.entries.Keys | Sort-Object) -join "," -eq
+            "fitness,healthcheck,main,orchestrator") "Migration changed the personal agent roster."
+        foreach ($agent in @("main", "orchestrator", "fitness")) {
+            Assert-True ($combined.agents.entries[$agent].tools.exec.mode -eq "full" -and
+                -not $combined.agents.entries[$agent].subagents.ContainsKey("delegationMode")) (
+                "Migration changed personal access or retained a delegation preference."
+            )
         }
         $config = Get-Content (Join-Path $scratch "openclaw.template.json") -Raw |
             ConvertFrom-Json -AsHashtable -Depth 100

@@ -16,9 +16,14 @@ SECTIONS = (
 EXCLUDED_PATHS = (
     "commands.native", "commands.nativeSkills",
     "agents.defaults.workspace", "agents.defaults.verboseDefault",
-    "agents.entries.main.identity", "agents.entries.orchestrator.workspace",
-    "agents.entries.orchestrator.identity", "agents.entries.orchestrator.thinkingDefault",
-    "tools.profile", "tools.web.search", "session.identityLinks",
+    "agents.entries.main.identity", "agents.entries.main.workspace",
+    "agents.entries.main.subagents.allowAgents",
+    "agents.entries.orchestrator.identity", "agents.entries.orchestrator.workspace",
+    "agents.entries.orchestrator.subagents.allowAgents",
+    "agents.entries.fitness.identity", "agents.entries.fitness.workspace",
+    "agents.entries.fitness.subagents.allowAgents",
+    "tools.profile", "tools.web.search", "tools.agentToAgent.allow",
+    "tools.sessions.visibility", "tools.subagents.tools.deny", "session.identityLinks",
     "gateway.mode", "gateway.auth", "gateway.tailscale",
     "plugins.entries.brave", "plugins.entries.discord", "plugins.entries.telegram",
 )
@@ -33,6 +38,18 @@ def quality_patch(template: dict) -> dict:
             parent = parent[part]
         del parent[parts[-1]]
     patch["agents"]["defaults"]["sandbox"]["docker"]["ulimits"]["nproc"] = None
+    patch["agents"]["defaults"]["subagents"]["delegationMode"] = None
+    for agent_id in ("main", "orchestrator", "fitness"):
+        patch["agents"]["entries"][agent_id]["subagents"]["delegationMode"] = None
+    patch["browser"].update(dict.fromkeys((
+        "enabled", "allowSystemProfileImport", "evaluateEnabled", "noSandbox",
+        "attachOnly", "defaultProfile", "snapshotDefaults", "tabCleanup",
+    )))
+    patch["browser"]["extensionRelay"] = {"allowLegacyAuth": None}
+    patch["browser"]["ssrfPolicy"] = dict.fromkeys((
+        "dangerouslyAllowPrivateNetwork", "allowRfc2544BenchmarkRange",
+        "allowIpv6UniqueLocalRange",
+    ))
     patch["hooks"] = {"defaultSessionKey": "hook:ingress", "allowedAgentIds": ["main"]}
     return patch
 

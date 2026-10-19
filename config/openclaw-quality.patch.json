@@ -1,27 +1,21 @@
 {
   "browser": {
-    "enabled": true,
-    "allowSystemProfileImport": false,
-    "evaluateEnabled": false,
     "headless": true,
-    "noSandbox": false,
-    "attachOnly": false,
-    "defaultProfile": "openclaw",
-    "snapshotDefaults": {
-      "mode": "efficient"
-    },
-    "tabCleanup": {
-      "enabled": true
-    },
+    "enabled": null,
+    "allowSystemProfileImport": null,
+    "evaluateEnabled": null,
+    "noSandbox": null,
+    "attachOnly": null,
+    "defaultProfile": null,
+    "snapshotDefaults": null,
+    "tabCleanup": null,
     "extensionRelay": {
-      "allowLegacyAuth": false
+      "allowLegacyAuth": null
     },
     "ssrfPolicy": {
-      "dangerouslyAllowPrivateNetwork": false,
-      "allowRfc2544BenchmarkRange": false,
-      "allowIpv6UniqueLocalRange": false,
-      "allowedHostnames": [],
-      "blockedHostnames": []
+      "dangerouslyAllowPrivateNetwork": null,
+      "allowRfc2544BenchmarkRange": null,
+      "allowIpv6UniqueLocalRange": null
     }
   },
   "commands": {
@@ -99,12 +93,12 @@
         }
       },
       "subagents": {
-        "delegationMode": "prefer",
         "maxConcurrent": 2,
         "maxSpawnDepth": 2,
         "maxChildrenPerAgent": 3,
         "thinking": "low",
-        "runTimeoutSeconds": 2700
+        "runTimeoutSeconds": 2700,
+        "delegationMode": null
       },
       "sandbox": {
         "mode": "non-main",
@@ -172,8 +166,28 @@
       },
       "main": {
         "sandbox": {
+          "mode": "off",
           "scope": "agent",
           "sessionToolsVisibility": "all"
+        },
+        "tools": {
+          "profile": "full",
+          "exec": {
+            "mode": "full",
+            "strictInlineEval": false,
+            "applyPatch": {
+              "workspaceOnly": false
+            }
+          },
+          "fs": {
+            "workspaceOnly": false
+          },
+          "elevated": {
+            "enabled": true
+          }
+        },
+        "subagents": {
+          "delegationMode": null
         },
         "memory": {
           "search": {
@@ -190,24 +204,52 @@
       },
       "orchestrator": {
         "sandbox": {
-          "scope": "agent",
-          "mode": "all"
-        },
-        "memory": {
-          "search": {
-            "rememberAcrossConversations": false,
-            "sources": [
-              "memory"
-            ]
-          }
+          "mode": "off",
+          "scope": "agent"
         },
         "tools": {
-          "elevated": {
-            "enabled": false
+          "profile": "full",
+          "exec": {
+            "mode": "full",
+            "strictInlineEval": false,
+            "applyPatch": {
+              "workspaceOnly": false
+            }
           },
           "fs": {
-            "workspaceOnly": true
+            "workspaceOnly": false
+          },
+          "elevated": {
+            "enabled": true
           }
+        },
+        "subagents": {
+          "delegationMode": null
+        }
+      },
+      "fitness": {
+        "sandbox": {
+          "mode": "off",
+          "scope": "agent"
+        },
+        "tools": {
+          "profile": "full",
+          "exec": {
+            "mode": "full",
+            "strictInlineEval": false,
+            "applyPatch": {
+              "workspaceOnly": false
+            }
+          },
+          "fs": {
+            "workspaceOnly": false
+          },
+          "elevated": {
+            "enabled": true
+          }
+        },
+        "subagents": {
+          "delegationMode": null
         }
       }
     }
@@ -271,22 +313,11 @@
       }
     },
     "agentToAgent": {
-      "enabled": true,
-      "allow": [
-        "main",
-        "orchestrator"
-      ]
+      "enabled": true
     },
-    "sessions": {
-      "visibility": "tree"
-    },
+    "sessions": {},
     "subagents": {
-      "tools": {
-        "deny": [
-          "gateway",
-          "nodes"
-        ]
-      }
+      "tools": {}
     },
     "sandbox": {
       "tools": {

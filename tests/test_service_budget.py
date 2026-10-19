@@ -63,7 +63,7 @@ class ServiceBudgetTests(unittest.TestCase):
                 self.assertEqual(defaults["sandbox"]["prune"]["idleHours"], 1)
                 self.assertTrue(config["plugins"]["entries"]["active-memory"]["enabled"])
                 self.assertTrue(config["plugins"]["entries"]["memory-core"]["config"]["dreaming"]["enabled"])
-                for agent in ("main", "orchestrator"):
+                for agent in ("main", "orchestrator", "fitness"):
                     self.assertEqual(config["agents"]["entries"][agent]["sandbox"]["scope"], "agent")
                 self.assertNotIn("heartbeat", config["agents"]["defaults"])
                 self.assertNotIn("heartbeat", config["agents"]["entries"]["healthcheck"])

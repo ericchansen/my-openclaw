@@ -1,109 +1,65 @@
-# Azure Key Vault SecretRefs
+# Azure Key Vault integration
 
-The [pinned runtime](../config/runtime-versions.json) resolves supported secrets
-on demand through an allowlisted exec provider backed by Azure managed identity.
-Do not export the vault into the gateway environment. New installations start
-with [the setup walkthrough](getting-started.md#3-seed-secrets-without-putting-values-in-commands).
+This deployment uses a managed-identity-backed exec provider named
+`azure-key-vault`. For SecretRef syntax and general credential management, see
+[OpenClaw secrets](https://docs.openclaw.ai/gateway/secrets).
 
-Official references: [OpenClaw secrets](https://docs.openclaw.ai/gateway/secrets), [SecretRef credential surface](https://docs.openclaw.ai/reference/secretref-credential-surface), and [Azure VM managed identity with Key Vault](https://learn.microsoft.com/azure/key-vault/general/tutorial-net-virtual-machine).
+## Installed components
 
-## Provider Contract
+| Component | Deployment-specific behavior |
+|---|---|
+| `/usr/local/bin/openclaw-keyvault-resolver` | Reads requested allowlisted secret names from the configured vault through Azure IMDS and the Key Vault REST API |
+| `/usr/local/bin/gog` | Resolves `GOG-KEYRING-PASSWORD` only for the real Google CLI at `/usr/local/libexec/gog` |
+| `/usr/local/bin/openclaw-mcp-launch` | Accepts `ebird` or `pondlog`, resolves `EBIRD-API-KEY`, and supplies it only to that child process |
 
-The template registers `/usr/local/bin/openclaw-keyvault-resolver` as the
-`azure-key-vault` exec provider. The installer sets its owner to the Gateway user
-with mode `0555` inside root-owned `/usr/local/bin`. Keep configuration files
-root-owned and non-writable, the command in its trusted directory, and its path
-absolute. Validate against the pinned runtime's enforced exec-provider policy.
+The resolver avoids a shared Azure CLI login/cache. Its stdout is the protocol
+response containing credentials, not diagnostic output. The launchers keep the
+Google keyring password and eBird key out of the Gateway environment and
+unrelated tool processes. The pinned MCP binaries live under
+`/usr/local/lib/openclaw-mcp`.
 
-OpenClaw sends one protocol-v1 JSON request on stdin:
+The installer places executables in root-controlled directories. The exec
+provider command is owned by the Gateway user with mode `0555`; its configuration
+declares `/usr/local/bin` as a trusted directory.
 
-```json
-{"protocolVersion":1,"provider":"azure-key-vault","ids":["BRAVE-API-KEY"]}
-```
+## Vault entries
 
-The resolver obtains a managed-identity token directly from Azure Instance Metadata Service (IMDS), calls the Key Vault REST API, reads only requested allowlisted names, and writes one JSON response:
+The reference setup uses `OPENCLAW-GATEWAY-TOKEN`, `TELEGRAM-BOT-TOKEN`,
+`DISCORD-BOT-TOKEN`, `BRAVE-API-KEY`, and `EBIRD-API-KEY`.
+Optional Google tooling adds `GOG-KEYRING-PASSWORD`. Existing vault-backed
+Copilot profiles can retain `GITHUB-COPILOT-TOKEN`; fresh native device login
+uses OpenClaw's protected local credential store instead.
+`GITHUB-TOKEN` is reserved for separately configured GitHub tooling.
 
-```json
-{"protocolVersion":1,"values":{"BRAVE-API-KEY":"<resolved internally>"},"errors":{}}
-```
+Seed and rotate values through Azure Portal or your approved credential process.
+The VM requires secret-read access, not vault administration. The deployer's
+temporary administrator assignment is for initial seeding.
 
-This direct path avoids shared Azure CLI login/cache races during concurrent secret audits. Never log stdin, resolved values, response bodies, tokens, or Key Vault debug payloads. Return generic per-ID errors. Keep output and timeouts bounded. Do not enable insecure paths, symlinked commands, arbitrary vault names, caller-provided shell fragments, or broad `passEnv`.
+## Configuration
 
-## Least Privilege
+The template contains the exec provider and channel/search references.
+MCP configuration calls the launcher, not `npx`, and carries no inline credential
+environment block.
 
-- Grant the VM identity only `secrets/get` for the required vault/scope.
-- Allowlist the exact IDs: gateway, Telegram, Discord, GitHub/Copilot, Brave, eBird, and the Gmail keyring credential required by the supervised watcher.
-- Use separate identities/vaults for environments where practical.
-- Restrict executable ownership and deployment separately from secret-read permission.
-- Rotate in Key Vault; do not rewrite configuration for a value change.
+Google tools need a separately installed ARM64 `gog` and Google OAuth/keyring
+setup. If installed after provisioning, use
+[runtime application](operations.md#runtime-updates) to activate the launcher.
+A Gmail watcher, its account, destinations, and renewal schedule are not
+provided by this repository.
 
-## Template References
+For an existing installation, merge only the intended provider/reference
+changes. The configuration template is not a replacement for existing accounts,
+channel routing, auth profiles, or automation state.
 
-Supported fields use:
+## Verification
 
-```json
-{
-  "source": "exec",
-  "provider": "azure-key-vault",
-  "id": "TELEGRAM-BOT-TOKEN"
-}
-```
+Use OpenClaw config validation and secret auditing as the runtime user, including
+`--allow-exec` when intentionally checking the provider. Inspect the resolver's
+file ownership, executable mode, trusted path, managed identity, and vault scope
+without printing values. Verify that the Gateway environment contains neither
+`GOG_KEYRING_PASSWORD` nor `EBIRD_API_KEY`.
 
-The template covers gateway, Telegram, Discord, and Brave search. Fresh native
-GitHub Copilot device login uses OpenClaw's protected local secret store and a
-`tokenRef`; it does not require exporting that store into Key Vault. Preserve an
-existing vault-backed profile's dedicated `GITHUB-COPILOT-TOKEN` entry. For a
-reviewed migration, map the profile's supported `tokenRef` with
-`openclaw secrets configure`, dry-run the saved plan, and use `--allow-exec`
-for exec-provider checks/application. Do not substitute a generic GitHub PAT.
-Confirm model entitlement separately.
-
-The Gmail keyring password is not a supported SecretRef credential field. The gateway must not inherit this credential because host-exec tools inherit its environment. The installer therefore keeps the real `gog` executable at `/usr/local/libexec/gog` and exposes a root-owned `/usr/local/bin/gog` launcher. The launcher resolves only `GOG-KEYRING-PASSWORD` immediately before executing `gog`, so the gateway and unrelated agent subprocesses do not receive it. It must not materialize the value in a file, command line, systemd environment file, or log. If `gog` is installed after initial provisioning, use the guarded runtime application to activate the launcher.
-
-The configured MCP servers use the credential launcher, not inline SecretRefs. The runtime
-installer pins eBird and Pondlog under `/usr/local/lib/openclaw-mcp` and installs the
-root-owned `/usr/local/bin/openclaw-mcp-launch` wrapper. The wrapper accepts only `ebird`
-or `pondlog`, resolves `EBIRD-API-KEY` immediately before process execution, and exposes
-it only as the child process's `EBIRD_API_KEY`. MCP config must use the launcher with no
-`env` block; never use `npx` or store the key in `openclaw.json`.
-
-## Channel-Preserving Migration
-
-Do not replace the live config with the template.
-
-1. Back up the active config and capture non-secret health/channel/automation inventories.
-2. Preserve Telegram allowlists/streaming, Discord guild/channel/sender tool restrictions, Gmail hooks, agent bindings, auth profiles, and automation database/state.
-3. Install and permission the resolver without retrieving a value in a terminal.
-4. Add the provider and SecretRefs as a minimal patch.
-5. Dry-run the patch against the installed schema.
-6. Audit and validate.
-7. Apply during a rollback window; restart only if required.
-8. Test each existing channel from its already-onboarded identity. Do not re-onboard or regenerate channel configuration.
-
-## Value-Safe Verification
-
-Run:
-
-```bash
-openclaw config patch --stdin --dry-run --json
-openclaw config validate --json
-openclaw secrets audit --check
-```
-
-Use `--allow-exec` only in the controlled provider-validation step after permissions and allowlists are verified. Capture exit status and redacted diagnostics, not stdout containing values. A clean audit means supported plaintext credential fields have been migrated; it does not prove every external channel works.
-
-Verify without `echo`, `printenv`, shell tracing, command substitution, or retrieving a secret through `az keyvault secret show`:
-
-- managed identity metadata and RBAC assignment identify the intended principal;
-- resolver file owner/mode/path match OpenClaw's enforced exec policy, and its configuration remains root-owned;
-- unknown and disallowed IDs fail safely;
-- config validation and secrets audit are clean;
-- gateway starts with redacted logs;
-- the gateway process environment does not contain `GOG_KEYRING_PASSWORD`;
-- the gateway process environment does not contain `EBIRD_API_KEY`;
-- `/usr/local/bin/gog` resolves through the launcher while `/usr/local/libexec/gog` is the root-controlled real executable;
-- eBird and Pondlog resolve through `/usr/local/bin/openclaw-mcp-launch` to the pinned binaries without `npx`;
-- existing Telegram, Discord, Gmail, GitHub/Copilot, and Brave operations succeed;
-- logs contain no values or resolver payloads.
-
-If any check fails, restore the last-known-good config and keep existing channel credentials/state intact while diagnosing.
+Finally, perform a real operation through each configured integration. A resolved
+credential or successful audit alone does not show that the external account
+accepts it. Keep credential responses, tokens, and account contents out of Git,
+chat, and diagnostic logs.
